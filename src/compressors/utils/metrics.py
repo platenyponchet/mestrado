@@ -4,10 +4,6 @@ from math import log10, isinf
 from skimage.metrics import structural_similarity as ssim
 
 
-# Removed 
-# AUC Score
-# Hits
-
 class Metrics:
     __serie1 = None
     __serie2 = None
@@ -29,17 +25,7 @@ class Metrics:
 
     def mape(self):
         mask = self.__serie1 != 0
-        return float((abs(self.__serie1[mask] - self.__serie2[mask]) / self.__serie1[mask]).mean()) * 100
-
-    def jaccard(self, tol=5):
-        tolerance = tol/100
-
-        threshold = self.__serie1 * tolerance
-
-        intersection = ((abs(self.__serie1 - self.__serie2) <= threshold).sum())
-        union = ((self.__serie1.notna() | self.__serie2.notna()).sum())
-
-        return float(intersection / union)
+        return float((abs(self.__serie1[mask] - self.__serie2[mask]) / abs(self.__serie1[mask])).mean()) * 100
 
     def isd(self):
         diff = self.__serie1 - self.__serie2
@@ -47,24 +33,27 @@ class Metrics:
 
     def prd(self):
         numerador = ((self.__serie1 - self.__serie2) ** 2).sum() ** 0.5
-
         denominador = (self.__serie1 ** 2).sum() ** 0.5
-
         return 100 * float(numerador / denominador)
 
     def snr(self):
         signal_power = (self.__serie1 ** 2).sum()
         noise_power = ((self.__serie1 - self.__serie2) ** 2).sum()
 
-        result = 10 * log10(signal_power / noise_power)
+        if signal_power == 0 or noise_power == 0:
+            return None
 
+        result = 10 * log10(signal_power / noise_power)
         return None if isinf(result) else result
 
     def psnr(self):
         max_i = self.__serie1.max()
+        mse = self.mse()
 
-        result = 10 * log10((max_i ** 2) / self.mse())
+        if max_i == 0 or mse == 0:
+            return None
 
+        result = 10 * log10((max_i ** 2) / mse)
         return None if isinf(result) else result
 
     def ssim(self):
@@ -74,13 +63,37 @@ class Metrics:
         return float(ssim(s_true, s_pred, data_range=s_true.max() - s_true.min()))
 
     @staticmethod
-    def energy(serie:pd.Series):
-        return serie.sum()/60
+    def energy(serie: pd.Series):
+        return serie.sum() / 60
+
+    @staticmethod
+    def energy_total(serie: pd.Series):
+        """Energia total: soma dos valores absolutos de potência integrada no tempo.
+        Não considera o sentido do fluxo de energia."""
+        return serie.abs().sum() / 60
 
     def energy_error(self):
-        return 100*abs(float(
-            (Metrics.energy(self.__serie1) - Metrics.energy(self.__serie2))/Metrics.energy(self.__serie1)
-        ))
+        """Erro percentual de energia líquida.
+        Pode ser alto quando o saldo energético original é próximo de zero
+        (ex: instalações com geração solar onde consumo e geração se equilibram)."""
+        e1 = Metrics.energy(self.__serie1)
+        e2 = Metrics.energy(self.__serie2)
+
+        if e1 == 0:
+            return None
+
+        return 100 * abs((e1 - e2) / e1)
+
+    def energy_error_total(self):
+        """Erro percentual de energia total (sem considerar sentido do fluxo).
+        Robusto para séries com valores negativos, pois o denominador é sempre positivo."""
+        e1 = Metrics.energy_total(self.__serie1)
+        e2 = Metrics.energy_total(self.__serie2)
+
+        if e1 == 0:
+            return None
+
+        return 100 * abs((e1 - e2) / e1)
 
     def compute_metrics(self):
         response = {
@@ -88,27 +101,13 @@ class Metrics:
             "RMSE": self.rmse(),
             "NRMSE": self.nrmse(),
             "MAPE": self.mape(),
-            "Jaccard": self.jaccard(),
             "ISD": self.isd(),
             "PRD": self.prd(),
             "SNR": self.snr(),
             "PSNR": self.psnr(),
             "SSIM": self.ssim(),
-            "EnergyError": self.energy_error()
+            "EnergyError": self.energy_error(),
+            "EnergyErrorTotal": self.energy_error_total(),
         }
 
         return response
-
-def plot_compression(orig_values, comp_values, orig_dt=None, comp_dt=None, label="None"):
-    plt.figure(figsize=(10, 5))
-    plt.plot(orig_dt, orig_values, label=f"Original", alpha=0.5)
-    plt.plot(comp_dt, comp_values, label=f"Compressed")
-    plt.legend()
-    plt.xlabel("datetime")
-    plt.ylabel("value")
-    plt.title(
-        f"{label}"
-    )
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()

@@ -1,5 +1,6 @@
 from typing import List, Tuple
 from ..utils.monitor import medir_pico_memoria
+from ..utils.metrics import Metrics
 
 
 class RDPCompressor:
@@ -9,6 +10,7 @@ class RDPCompressor:
         self.compression_ratio = None
         self.execution_time = None
         self.memory_usage_mb = None
+        self.metrics = None
 
     def _dist(self, p, a, b):
         x, y = p
@@ -49,33 +51,35 @@ class RDPCompressor:
         def _compress():
             return self._rdp(serie)
 
+        # 🔥 apenas a compressão é monitorada
         pontos, t, mem = medir_pico_memoria(_compress)
 
         self.execution_time = t
         self.memory_usage_mb = mem
-
-        # 🔥 MÉTRICA CORRIGIDA
         self.compression_ratio = 100 * (1 - len(pontos) / len(serie))
 
+        # reconstrução fora do monitor
         reconstruido = []
         idx = 0
 
-        for i in range(len(pontos)-1):
+        for i in range(len(pontos) - 1):
             t0, v0 = pontos[i]
-            t1, v1 = pontos[i+1]
+            t1, v1 = pontos[i + 1]
 
-            seg = []
             while idx < len(serie) and serie[idx][0] <= t1:
-                seg.append(serie[idx])
-                idx += 1
-
-            for t_, _ in seg:
+                t_ = serie[idx][0]
                 if t1 == t0:
                     v = v0
                 else:
-                    a = (t_ - t0)/(t1 - t0)
-                    v = v0 + a*(v1 - v0)
-
+                    a = (t_ - t0) / (t1 - t0)
+                    v = v0 + a * (v1 - v0)
                 reconstruido.append((t_, v))
+                idx += 1
 
-        return reconstruido[:len(serie)]
+        reconstruido = reconstruido[:len(serie)]
+
+        original = [v for _, v in serie]
+        reconstruido_vals = [v for _, v in reconstruido]
+        self.metrics = Metrics(original, reconstruido_vals).compute_metrics()
+
+        return reconstruido

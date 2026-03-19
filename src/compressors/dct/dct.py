@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.fftpack import dct, idct
 from ..utils.monitor import medir_pico_memoria
+from ..utils.metrics import Metrics
 
 
 class DCTCompressor:
@@ -10,45 +11,46 @@ class DCTCompressor:
         self.compression_ratio = None
         self.execution_time = None
         self.memory_usage_mb = None
+        self.metrics = None
 
     def compress(self, serie):
 
         def _compress():
-            t = [p[0] for p in serie]
             x = np.array([p[1] for p in serie], dtype=np.float64)
 
-            # normalização
             xmin, xmax = np.min(x), np.max(x)
             x_norm = (x - xmin) / (xmax - xmin + 1e-12)
 
-            # DCT
             coeffs = dct(x_norm, norm='ortho')
             N = len(coeffs)
             K = max(1, int(N / self.cr))
 
-            # zera coeficientes acima de K
             compressed_coeffs = np.zeros(N)
             compressed_coeffs[:K] = coeffs[:K]
 
-            compressed_len = K
-            original_len = N
-            compression_ratio = 100 * (1 - compressed_len / original_len)
+            tamanho_original = N * 8
+            tamanho_transmitido = (K + 3) * 8
+            compression_ratio = 100 * (1 - tamanho_transmitido / tamanho_original)
 
-            # reconstrução
-            x_rec = idct(compressed_coeffs, norm='ortho')
-            x_rec = x_rec[:len(x)]
+            return compressed_coeffs, compression_ratio, xmin, xmax, len(x)
 
-            # desnormalização
-            x_rec = x_rec * (xmax - xmin) + xmin
-
-            reconstruido = list(zip(t, x_rec.tolist()))
-
-            return reconstruido, compression_ratio
-
-        (reconstruido, ratio), t_exec, mem = medir_pico_memoria(_compress)
+        (compressed_coeffs, ratio, xmin, xmax, n), t_exec, mem = medir_pico_memoria(_compress)
 
         self.execution_time = t_exec
         self.memory_usage_mb = mem
         self.compression_ratio = ratio
+
+        # reconstrução fora do monitor
+        t = [p[0] for p in serie]
+
+        x_rec = idct(compressed_coeffs, norm='ortho')
+        x_rec = x_rec[:n]
+        x_rec = x_rec * (xmax - xmin) + xmin
+
+        reconstruido = list(zip(t, x_rec.tolist()))
+
+        original = [v for _, v in serie]
+        reconstruido_vals = [v for _, v in reconstruido]
+        self.metrics = Metrics(original, reconstruido_vals).compute_metrics()
 
         return reconstruido

@@ -1,3 +1,4 @@
-from .utils import plot_compression, Metrics
+from .metrics import Metrics
+from .monitor import medir_pico_memoria
 
-__all__ = ["plot_compression", "Metrics"]
+__all__ = ["Metrics", "medir_pico_memoria"]

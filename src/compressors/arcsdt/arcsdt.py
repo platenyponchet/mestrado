@@ -1,5 +1,6 @@
 import numpy as np
 from ..utils.monitor import medir_pico_memoria
+from ..utils.metrics import Metrics
 from math import sqrt, pow
 from typing import Tuple, Optional
 
@@ -53,8 +54,8 @@ class ARC_SDT:
 
 
 class ARCSDTCompressor:
-    def __init__(self, percentual_error: float = 1.0, target_cr: float = 80.0,
-                 kp: float = 15.0, ki: float = 0.05, kd: float = 2.0,
+    def __init__(self, percentual_error: float = 10.0, target_cr: float = 80.0,
+                 kp: float = 10.0, ki: float = 2, kd: float = 0.0,
                  update_interval: int = 1, min_absolute_error: float = 1.0):
         self.percentual_error = percentual_error
         self.target_cr = target_cr
@@ -67,16 +68,16 @@ class ARCSDTCompressor:
         self.compression_ratio = None
         self.execution_time = None
         self.memory_usage_mb = None
+        self.metrics = None
 
     def compress(self, serie):
 
         def _compress():
-            # PID state
             integral = 0.0
             prev_error = None
             deriv_filtered = 0.0
             deriv_filter_alpha = 0.9
-            output_limits = (1, 40)
+            output_limits = (1, 100)
 
             def pid_update(measured, dt=1.0):
                 nonlocal integral, prev_error, deriv_filtered
@@ -123,33 +124,37 @@ class ARCSDTCompressor:
 
             compression_ratio = 100 * (1 - len(pts) / len(serie))
 
-            # reconstrução por interpolação linear (igual ao SDT)
-            reconstruido = []
-            idx = 0
+            return pts, compression_ratio
 
-            for i in range(len(pts) - 1):
-                t0, v0 = pts[i]
-                t1, v1 = pts[i + 1]
-
-                seg = []
-                while idx < len(serie) and serie[idx][0] <= t1:
-                    seg.append(serie[idx])
-                    idx += 1
-
-                for t_, _ in seg:
-                    if t1 == t0:
-                        v = v0
-                    else:
-                        a = (t_ - t0) / (t1 - t0)
-                        v = v0 + a * (v1 - v0)
-                    reconstruido.append((t_, v))
-
-            return reconstruido[:len(serie)], compression_ratio
-
-        (reconstruido, ratio), t_exec, mem = medir_pico_memoria(_compress)
+        # 🔥 apenas a compressão é monitorada
+        (pts, ratio), t_exec, mem = medir_pico_memoria(_compress)
 
         self.execution_time = t_exec
         self.memory_usage_mb = mem
         self.compression_ratio = ratio
+
+        # reconstrução fora do monitor
+        reconstruido = []
+        idx = 0
+
+        for i in range(len(pts) - 1):
+            t0, v0 = pts[i]
+            t1, v1 = pts[i + 1]
+
+            while idx < len(serie) and serie[idx][0] <= t1:
+                t_ = serie[idx][0]
+                if t1 == t0:
+                    v = v0
+                else:
+                    a = (t_ - t0) / (t1 - t0)
+                    v = v0 + a * (v1 - v0)
+                reconstruido.append((t_, v))
+                idx += 1
+
+        reconstruido = reconstruido[:len(serie)]
+
+        original = [v for _, v in serie]
+        reconstruido_vals = [v for _, v in reconstruido]
+        self.metrics = Metrics(original, reconstruido_vals).compute_metrics()
 
         return reconstruido

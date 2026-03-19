@@ -111,22 +111,19 @@ if op == 1:
 
     wavelet = input("Tipo de wavelet (db4, haar) [db4]: ") or "db4"
 
-    level_input = input("Nível (ex: 4 ou 5) [4]: ")
+    level_input = input("Nível de decomposição [4]: ")
     level = int(level_input) if level_input.strip() != "" else 4
 
-    print("\nDica:")
-    print("Para ~90% de compressão → use level >= 4 e keep = 1")
-
-    keep_input = input("Nível de detalhe a manter (keep) [1]: ")
-    keep = int(keep_input) if keep_input.strip() != "" else 1
+    reduction = float(input("Redução desejada (%) (ex: 90 = remove 90%): "))
+    cr = 100 / (100 - reduction)
 
     compressor = WaveletCompressor(
         wavelet=wavelet,
         level=level,
-        keep=keep
+        cr=cr
     )
 
-    nome_metodo = f"wavelet-{wavelet}-lvl{level}-k{keep}"
+    nome_metodo = f"wavelet-{wavelet}-lvl{level}-red{reduction}"
 
 elif op == 2:
     print("\n--- Configuração SDT ---")
@@ -166,8 +163,8 @@ elif op == 5:
     cr_input = input("Taxa de compressão alvo (%) [80.0]: ")
     target_cr = float(cr_input) if cr_input.strip() != "" else 80.0
 
-    kp_input = input("Kp do PID [15.0]: ")
-    kp = float(kp_input) if kp_input.strip() != "" else 15.0
+    kp_input = input("Kp do PID [1000.0]: ")
+    kp = float(kp_input) if kp_input.strip() != "" else 1000.0
 
     ki_input = input("Ki do PID [0.05]: ")
     ki = float(ki_input) if ki_input.strip() != "" else 0.05
@@ -237,6 +234,14 @@ print("\nMétricas:")
 print(f"Redução: {compressor.compression_ratio:.2f}%")
 print(f"Tempo: {compressor.execution_time:.6f} s")
 print(f"Memória: {compressor.memory_usage_mb:.6f} MB")
+
+if compressor.metrics:
+    print("\nQualidade da reconstrução:")
+    for k, v in compressor.metrics.items():
+        if v is None:
+            print(f"  {k}: N/A")
+        else:
+            print(f"  {k}: {v:.6f}")
 
 # =========================
 # 8. Salvar PNG
