@@ -1,0 +1,5 @@
+# ignoring python tmp files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
