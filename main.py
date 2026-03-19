@@ -157,20 +157,20 @@ elif op == 4:
 elif op == 5:
     print("\n--- Configuração ARC-SDT ---")
 
-    pe_input = input("Erro percentual inicial (%) [1.0]: ")
-    percentual_error = float(pe_input) if pe_input.strip() != "" else 1.0
+    pe_input = input("Erro percentual inicial (%) [10.0]: ")
+    percentual_error = float(pe_input) if pe_input.strip() != "" else 10.0
 
-    cr_input = input("Taxa de compressão alvo (%) [80.0]: ")
-    target_cr = float(cr_input) if cr_input.strip() != "" else 80.0
+    cr_input = input("Taxa de compressão alvo (%) [90.0]: ")
+    target_cr = float(cr_input) if cr_input.strip() != "" else 90.0
 
-    kp_input = input("Kp do PID [1000.0]: ")
-    kp = float(kp_input) if kp_input.strip() != "" else 1000.0
+    kp_input = input("Kp do PID [10.0]: ")
+    kp = float(kp_input) if kp_input.strip() != "" else 10.0
 
-    ki_input = input("Ki do PID [0.05]: ")
-    ki = float(ki_input) if ki_input.strip() != "" else 0.05
+    ki_input = input("Ki do PID [2]: ")
+    ki = float(ki_input) if ki_input.strip() != "" else 2.0
 
-    kd_input = input("Kd do PID [2.0]: ")
-    kd = float(kd_input) if kd_input.strip() != "" else 2.0
+    kd_input = input("Kd do PID [0.0]: ")
+    kd = float(kd_input) if kd_input.strip() != "" else 0.0
 
     ui_input = input("Intervalo de atualização do PID [1]: ")
     update_interval = int(ui_input) if ui_input.strip() != "" else 1
