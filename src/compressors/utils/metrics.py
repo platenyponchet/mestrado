@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 from math import log10, isinf
 from skimage.metrics import structural_similarity as ssim
 
@@ -21,7 +22,21 @@ class Metrics:
 
     def nrmse(self):
         range_true = float(self.__serie1.max() - self.__serie1.min())
+        # Proteção contra divisão por zero em sinais constantes
+        if range_true == 0:
+            return 0.0 # Ou None, se preferir indicar que a métrica não se aplica
         return self.rmse() / range_true
+
+    def ssim(self):
+        s_true = self.__serie1.to_numpy()
+        s_pred = self.__serie2.to_numpy()
+        
+        range_true = s_true.max() - s_true.min()
+        # O SSIM da skimage exige que o data_range seja > 0
+        if range_true == 0:
+            return 1.0 if np.array_equal(s_true, s_pred) else 0.0
+
+        return float(ssim(s_true, s_pred, data_range=range_true))
 
     def mape(self):
         mask = self.__serie1 != 0
@@ -55,12 +70,6 @@ class Metrics:
 
         result = 10 * log10((max_i ** 2) / mse)
         return None if isinf(result) else result
-
-    def ssim(self):
-        s_true = self.__serie1.to_numpy()
-        s_pred = self.__serie2.to_numpy()
-
-        return float(ssim(s_true, s_pred, data_range=s_true.max() - s_true.min()))
 
     @staticmethod
     def energy(serie: pd.Series):

@@ -57,7 +57,7 @@ class ARCSDTCompressor:
     def __init__(self, percentual_error: float = 10.0, target_cr: float = 80.0,
                  kp: float = 10.0, ki: float = 2, kd: float = 0.0,
                  update_interval: int = 1, min_absolute_error: float = 1.0):
-        self.percentual_error = percentual_error
+        self.percentual_error = target_cr
         self.target_cr = target_cr
         self.kp = kp
         self.ki = ki
@@ -77,7 +77,7 @@ class ARCSDTCompressor:
             prev_error = None
             deriv_filtered = 0.0
             deriv_filter_alpha = 0.9
-            output_limits = (1, 100)
+            output_limits = (1, 10000)  # Limites para o erro percentual
 
             def pid_update(measured, dt=1.0):
                 nonlocal integral, prev_error, deriv_filtered

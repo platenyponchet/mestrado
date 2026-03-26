@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import os
 import json
 from datetime import datetime, timezone, timedelta
@@ -114,8 +116,7 @@ if op == 1:
     level_input = input("Nível de decomposição [4]: ")
     level = int(level_input) if level_input.strip() != "" else 4
 
-    reduction = float(input("Redução desejada (%) (ex: 90 = remove 90%): "))
-    cr = 100 / (100 - reduction)
+    cr = float(input("Redução desejada (%) (ex: 90 = remove 90%): "))
 
     compressor = WaveletCompressor(
         wavelet=wavelet,
@@ -123,7 +124,7 @@ if op == 1:
         cr=cr
     )
 
-    nome_metodo = f"wavelet-{wavelet}-lvl{level}-red{reduction}"
+    nome_metodo = f"wavelet-{wavelet}-lvl{level}-red{cr}"
 
 elif op == 2:
     print("\n--- Configuração SDT ---")
@@ -137,13 +138,11 @@ elif op == 2:
 elif op == 3:
     print("\n--- Configuração DCT ---")
 
-    reduction = float(input("Redução desejada (%) (ex: 90 = remove 90%): "))
-
-    cr = 100 / (100 - reduction)  # ex: 90% → cr=10
+    cr = float(input("Redução desejada (%) (ex: 90 = remove 90%): "))
 
     compressor = DCTCompressor(cr=cr)
 
-    nome_metodo = f"dct-red{reduction}"
+    nome_metodo = f"dct-red{cr}"
 
 elif op == 4:
     print("\n--- Configuração RDP ---")
