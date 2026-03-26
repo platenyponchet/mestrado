@@ -24,7 +24,7 @@ parser.add_argument("--volpi", action="store_true", help="Roda apenas AlfredoVol
 args = parser.parse_args()
 
 TARGET_CRS = [80] if (args.test or args.volpi) else list(range(10, 91, 10))
-JANELAS = [720] if (args.test or args.volpi) else [360]
+JANELAS = [720] if (args.test or args.volpi) else [15,60,360,720,1440]
 
 FILTER_NOME  = ["AlfredoVolpi"] if args.volpi else None
 FILTER_ALGOS = [("arcsdt", "arcsdt")] if args.volpi else None
@@ -126,8 +126,9 @@ def fit_rdp(serie, target_cr, tolerancia=2.0, max_iter=30):
     return best
 
 def rodar_compressor(algo, serie, target_cr):
-    if algo == "wavelet":
-        c = WaveletCompressor(cr=target_cr)
+    if algo.startswith("wavelet"):
+        wavelet = algo.split("-", 1)[1]  # extrai "db4", "bior4.4" ou "sym4"
+        c = WaveletCompressor(cr=target_cr, wavelet=wavelet)
         c.compress(serie)
     elif algo == "dct":
         c = DCTCompressor(cr=target_cr)
@@ -178,18 +179,16 @@ resultados = []
 log_lines = []
 erros_finais = []
 
-# ALGOS = [
-#     ("wavelet", "wavelet-db4"),
-#     ("dct",     "dct"),
-#     ("arcsdt",  "arcsdt"),
-#     ("sdt",     "sdt"),
-#     ("rdp",     "rdp"),
-# ]
 ALGOS = [
-    ("wavelet", "wavelet-db4"),
-    ("dct",     "dct"),
-    ("arcsdt",  "arcsdt"),
+    ("wavelet-db4",    "wavelet-db4"),
+    ("wavelet-bior4.4","wavelet-bior4.4"),
+    ("wavelet-sym4",   "wavelet-sym4"),
+    ("dct",            "dct"),
+    ("arcsdt",         "arcsdt"),
+    ("sdt",            "sdt"),
+    ("rdp",            "rdp"),
 ]
+
 
 algos_ativos = FILTER_ALGOS if FILTER_ALGOS else ALGOS
 
