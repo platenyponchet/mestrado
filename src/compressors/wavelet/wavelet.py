@@ -33,7 +33,7 @@ class WaveletCompressor:
             tamanho_original = N * byte_sz
             
             # Se CR=80, queremos que o tamanho_alvo seja 20% do original (1 - 80/100)
-            percentual_manter = (1 - self.cr / 100)
+            percentual_manter = round((1 - self.cr / 100),10)
             tamanho_alvo = tamanho_original * percentual_manter
 
             # Metadados: xmin(4), xmax(4), N(4) + estrutura de cada nível (2 valores por slice)

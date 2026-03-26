@@ -37,13 +37,13 @@ def main():
     sns.set_theme(style="white", font_scale=1.1)
     
     # Criar o JointGrid (Eixo X: compression_ratio, Eixo Y: SSIM)
-    g = sns.JointGrid(data=df, x='compression_ratio', y='SSIM', space=0, height=8)
+    g = sns.JointGrid(data=df, x='compression_ratio', y='PeakRecall', space=0, height=8)
 
     # --- Centro: Dispersão com transparência ---
     g.plot_joint(sns.scatterplot, alpha=0.5, color='#2c7fb8', edgecolor='none', s=25)
     
     # Linha de tendência para mostrar o trade-off
-    sns.regplot(data=df, x='compression_ratio', y='SSIM', ax=g.ax_joint, 
+    sns.regplot(data=df, x='compression_ratio', y='PeakRecall', ax=g.ax_joint, 
                 scatter=False, color='#e6550d', line_kws={'lw': 2, 'linestyle': '--'})
 
     # --- Marginais: As "Ondas" (KDE) ---

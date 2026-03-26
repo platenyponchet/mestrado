@@ -187,6 +187,7 @@ erros_finais = []
 # ]
 ALGOS = [
     ("wavelet", "wavelet-db4"),
+    ("dct",     "dct"),
     ("arcsdt",  "arcsdt"),
 ]
 

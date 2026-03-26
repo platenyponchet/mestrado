@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from math import log10, isinf
 from skimage.metrics import structural_similarity as ssim
+from scipy.signal import find_peaks
 
 
 class Metrics:
@@ -22,9 +23,8 @@ class Metrics:
 
     def nrmse(self):
         range_true = float(self.__serie1.max() - self.__serie1.min())
-        # Proteção contra divisão por zero em sinais constantes
         if range_true == 0:
-            return 0.0 # Ou None, se preferir indicar que a métrica não se aplica
+            return 0.0
         return self.rmse() / range_true
 
     def ssim(self):
@@ -32,7 +32,6 @@ class Metrics:
         s_pred = self.__serie2.to_numpy()
         
         range_true = s_true.max() - s_true.min()
-        # O SSIM da skimage exige que o data_range seja > 0
         if range_true == 0:
             return 1.0 if np.array_equal(s_true, s_pred) else 0.0
 
@@ -71,20 +70,107 @@ class Metrics:
         result = 10 * log10((max_i ** 2) / mse)
         return None if isinf(result) else result
 
+    def peak_recall(self, prominence: float = None, position_tolerance: int = None):
+        """
+        Fração dos picos da série original que foram preservados na série comprimida.
+
+        Um pico original é considerado preservado se existe ao menos um pico
+        na série comprimida dentro da janela de tolerância de posição.
+
+        Parâmetros
+        ----------
+        prominence : float, opcional
+            Proeminência mínima para considerar um ponto como pico.
+            Padrão: 10% do range da série original.
+        position_tolerance : int, opcional
+            Tolerância em número de amostras para casar picos entre as séries.
+            Padrão: 1% do comprimento da série (mínimo 1).
+
+        Retorna
+        -------
+        float : valor entre 0.0 e 1.0, ou None se não houver picos na original.
+        """
+        s_true = self.__serie1.to_numpy()
+        s_pred = self.__serie2.to_numpy()
+
+        if prominence is None:
+            prominence = 0.1 * (s_true.max() - s_true.min())
+        if position_tolerance is None:
+            position_tolerance = max(1, int(0.01 * len(s_true)))
+
+        peaks_true, _ = find_peaks(s_true, prominence=prominence)
+
+        if len(peaks_true) == 0:
+            return None
+
+        peaks_pred, _ = find_peaks(s_pred, prominence=prominence)
+
+        preserved = sum(
+            1 for p in peaks_true
+            if np.any(np.abs(peaks_pred - p) <= position_tolerance)
+        )
+
+        return preserved / len(peaks_true)
+
+    def peak_amplitude_error(self, prominence: float = None, position_tolerance: int = None):
+        """
+        Erro médio normalizado de amplitude nos picos preservados.
+
+        Para cada pico da série original que tem correspondência na comprimida
+        (dentro da tolerância de posição), calcula o erro absoluto de amplitude
+        normalizado pelo valor do pico original.
+
+        Parâmetros
+        ----------
+        prominence : float, opcional
+            Proeminência mínima para considerar um ponto como pico.
+            Padrão: 10% do range da série original.
+        position_tolerance : int, opcional
+            Tolerância em número de amostras para casar picos entre as séries.
+            Padrão: 1% do comprimento da série (mínimo 1).
+
+        Retorna
+        -------
+        float : erro médio em percentual (0–100+), ou None se não houver picos casados.
+        """
+        s_true = self.__serie1.to_numpy()
+        s_pred = self.__serie2.to_numpy()
+
+        if prominence is None:
+            prominence = 0.1 * (s_true.max() - s_true.min())
+        if position_tolerance is None:
+            position_tolerance = max(1, int(0.01 * len(s_true)))
+
+        peaks_true, _ = find_peaks(s_true, prominence=prominence)
+
+        if len(peaks_true) == 0:
+            return None
+
+        peaks_pred, _ = find_peaks(s_pred, prominence=prominence)
+
+        errors = []
+        for p in peaks_true:
+            candidates = peaks_pred[np.abs(peaks_pred - p) <= position_tolerance]
+            if len(candidates) == 0:
+                continue
+            # Pico mais próximo em posição
+            nearest = candidates[np.argmin(np.abs(candidates - p))]
+            amp_true = s_true[p]
+            amp_pred = s_pred[nearest]
+            if amp_true != 0:
+                errors.append(abs(amp_true - amp_pred) / abs(amp_true) * 100)
+
+        return float(np.mean(errors)) if errors else None
+
     @staticmethod
     def energy(serie: pd.Series):
         return serie.sum() / 60
 
     @staticmethod
     def energy_total(serie: pd.Series):
-        """Energia total: soma dos valores absolutos de potência integrada no tempo.
-        Não considera o sentido do fluxo de energia."""
         return serie.abs().sum() / 60
 
     def energy_error(self):
-        """Erro percentual de energia líquida.
-        Pode ser alto quando o saldo energético original é próximo de zero
-        (ex: instalações com geração solar onde consumo e geração se equilibram)."""
         e1 = Metrics.energy(self.__serie1)
         e2 = Metrics.energy(self.__serie2)
 
@@ -94,8 +180,6 @@ class Metrics:
         return 100 * abs((e1 - e2) / e1)
 
     def energy_error_total(self):
-        """Erro percentual de energia total (sem considerar sentido do fluxo).
-        Robusto para séries com valores negativos, pois o denominador é sempre positivo."""
         e1 = Metrics.energy_total(self.__serie1)
         e2 = Metrics.energy_total(self.__serie2)
 
@@ -117,6 +201,8 @@ class Metrics:
             "SSIM": self.ssim(),
             "EnergyError": self.energy_error(),
             "EnergyErrorTotal": self.energy_error_total(),
+            "PeakRecall": self.peak_recall(),
+            "PeakAmplitudeError": self.peak_amplitude_error(),
         }
 
         return response
