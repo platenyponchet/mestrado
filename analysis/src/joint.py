@@ -103,7 +103,7 @@ def main():
     plt.tight_layout()
 
     # Salvar
-    pasta_saida = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'views')
+    pasta_saida = os.path.join(os.getcwd(), 'views')
     os.makedirs(pasta_saida, exist_ok=True)
 
     nome_saida = os.path.join(
@@ -113,8 +113,6 @@ def main():
 
     plt.savefig(nome_saida, dpi=300, bbox_inches='tight')
     print(f"Gráfico salvo: {nome_saida}")
-
-    plt.show()
 
 
 if __name__ == "__main__":
