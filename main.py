@@ -111,19 +111,23 @@ op = int(input("Escolha: "))
 if op == 1:
     print("\n--- Configuração Wavelet ---")
 
-    wavelet = input("Tipo de wavelet (db4, haar) [db4]: ") or "db4"
+    print("Wavelets disponíveis:")
+    print("  1 -> db4")
+    print("  2 -> bior4.4")
+    print("  3 -> sym4")
+    print("  4 -> haar")
+    print("  5 -> outro (digitar manualmente)")
+
+    op_wavelet = int(input("Escolha: "))
+    wavelet_map = {1: "db4", 2: "bior4.4", 3: "sym4", 4: "haar"}
+    wavelet = wavelet_map.get(op_wavelet) or input("Digite o nome da wavelet: ")
 
     level_input = input("Nível de decomposição [4]: ")
     level = int(level_input) if level_input.strip() != "" else 4
 
     cr = float(input("Redução desejada (%) (ex: 90 = remove 90%): "))
 
-    compressor = WaveletCompressor(
-        wavelet=wavelet,
-        level=level,
-        cr=cr
-    )
-
+    compressor = WaveletCompressor(wavelet=wavelet, level=level, cr=cr)
     nome_metodo = f"wavelet-{wavelet}-lvl{level}-red{cr}"
 
 elif op == 2:
