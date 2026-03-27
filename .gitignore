@@ -6,3 +6,8 @@ __pycache__/
 
 
 experiments/
+
+.sql_history
+query_log.txt
+views/
+compressions/
