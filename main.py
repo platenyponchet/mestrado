@@ -12,7 +12,7 @@ from src.compressors.dct import DCTCompressor
 from src.compressors.rdp import RDPCompressor
 from src.compressors.arcsdt import ARCSDTCompressor
 
-pasta = "output"
+pasta = "public/output"
 intervalo = 60  # 1 minuto
 
 utc_minus_3 = timezone(timedelta(hours=-3))
