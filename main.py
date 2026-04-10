@@ -163,8 +163,8 @@ elif op == 5:
     pe_input = input("Erro percentual inicial (%) [10.0]: ")
     percentual_error = float(pe_input) if pe_input.strip() != "" else 10.0
 
-    cr_input = input("Taxa de compressão alvo (%) [90.0]: ")
-    target_cr = float(cr_input) if cr_input.strip() != "" else 90.0
+    cr_input = input("Taxa de compressão alvo (%) [80.0]: ")
+    target_cr = float(cr_input) if cr_input.strip() != "" else 80.0
 
     kp_input = input("Kp do PID [10.0]: ")
     kp = float(kp_input) if kp_input.strip() != "" else 10.0
@@ -178,8 +178,8 @@ elif op == 5:
     ui_input = input("Intervalo de atualização do PID [1]: ")
     update_interval = int(ui_input) if ui_input.strip() != "" else 1
 
-    mae_input = input("Erro absoluto mínimo [1.0]: ")
-    min_absolute_error = float(mae_input) if mae_input.strip() != "" else 1.0
+    mae_input = input("Erro absoluto mínimo [0.001]: ")
+    min_absolute_error = float(mae_input) if mae_input.strip() != "" else 0.001
 
     compressor = ARCSDTCompressor(
         percentual_error=percentual_error,

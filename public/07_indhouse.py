@@ -1,64 +1,48 @@
 """
-process_energy_csv4.py
+process_energy_csv7.py
 ----------------------
-Lê um CSV no formato GREEND (timestamp Unix float em segundos + colunas por
-endereço MAC ZigBee). Identifica automaticamente a coluna com maior amplitude
-(max - min) como proxy de "mains", reamostra para 1 minuto, encontra a
-primeira meia-noite e gera até 7 arquivos JSON com os dias completos.
+Lê um CSV com separador ';' e header (Date, Time, Global_active_power, ...).
+Combina as colunas 'Date' e 'Time' em um datetime, usa 'Global_active_power'
+como mains. Dados já estão em resolução de 1 minuto.
+Encontra a primeira meia-noite UTC e gera até 7 arquivos JSON com os dias completos.
 
 Uso:
-    python process_energy_csv4.py <caminho_do_csv> [--prefix PREFIXO]
-    python process_energy_csv4.py <caminho_do_csv> --list-columns
+    python process_energy_csv7.py <caminho_do_csv> [--prefix PREFIXO]
 """
 
 import sys
 import json
-import math
 import pandas as pd
 from pathlib import Path
 
 
-def load_csv(csv_path: Path) -> pd.DataFrame:
-    """Lê o CSV tratando NULL e valores ausentes."""
-    df = pd.read_csv(csv_path, na_values=["NULL", "null", "NaN", "nan", ""])
-    return df
+def load_and_prepare(csv_path: Path) -> pd.Series:
+    """Lê o CSV, combina Date+Time, usa Global_active_power como mains."""
+    df = pd.read_csv(
+        csv_path,
+        sep=";",
+        na_values=["?", "NULL", "null", "NaN", "nan", ""],
+        low_memory=False,
+    )
 
+    for col in ("Date", "Time", "Global_active_power"):
+        if col not in df.columns:
+            raise ValueError(f"Coluna '{col}' não encontrada no arquivo.")
 
-def pick_mains_column(df: pd.DataFrame, timestamp_col: str) -> str:
-    """Retorna a primeira coluna de dados (excluindo o timestamp)."""
-    candidates = [c for c in df.columns if c != timestamp_col]
-    if not candidates:
-        raise ValueError("Nenhuma coluna de dados encontrada além do timestamp.")
-    chosen = candidates[0]
-    print(f"\n   Coluna selecionada (primeira): {chosen}")
-    return chosen
+    # Combina Date (DD/MM/YYYY) e Time (HH:MM:SS) em datetime UTC
+    df["datetime"] = pd.to_datetime(
+        df["Date"] + " " + df["Time"],
+        format="%d/%m/%Y %H:%M:%S",
+        utc=True,
+    )
+    df = df.drop(columns=["Date", "Time"])
+    df = df.sort_values("datetime").set_index("datetime")
 
+    df["Global_active_power"] = pd.to_numeric(df["Global_active_power"], errors="coerce")
 
-def load_and_prepare(csv_path: Path) -> tuple[pd.Series, str]:
-    """
-    Carrega o CSV, seleciona a coluna de maior amplitude como mains,
-    converte o timestamp e reamostra para 1 minuto.
-    Retorna a série reamostrada e o nome da coluna escolhida.
-    """
-    df = load_csv(csv_path)
-
-    # Detecta coluna de timestamp pelo nome ou, como fallback, a primeira coluna
-    if "timestamp" in df.columns:
-        timestamp_col = "timestamp"
-    else:
-        timestamp_col = df.columns[0]
-
-    # Converte timestamp (segundos float → datetime UTC)
-    df[timestamp_col] = pd.to_datetime(df[timestamp_col], unit="s", utc=True)
-    df = df.sort_values(timestamp_col).set_index(timestamp_col)
-
-    # Converte todas as colunas de dados para numérico
-    df = df.apply(pd.to_numeric, errors="coerce")
-
-    mains_col = pick_mains_column(df.reset_index(), timestamp_col)
-
-    series = df[mains_col].resample("1min").mean()
-    return series, mains_col
+    # Reamostra para garantir índice regular de 1 minuto (trata duplicatas via média)
+    series = df["Global_active_power"].resample("1min").mean()
+    return series
 
 
 def find_first_midnight(series: pd.Series) -> pd.Timestamp | None:
@@ -123,37 +107,20 @@ def save_json_files(
         print(f"  ✔ Salvo: {filename}  ({len(values)} valores)")
 
 
-def list_columns(csv_path: Path) -> None:
-    """Imprime as colunas disponíveis e suas amplitudes."""
-    df = load_csv(csv_path)
-    timestamp_col = "timestamp" if "timestamp" in df.columns else df.columns[0]
-    numeric = df.drop(columns=[timestamp_col]).apply(pd.to_numeric, errors="coerce")
-    amplitudes = (numeric.max() - numeric.min()).dropna().sort_values(ascending=False)
-
-    print(f"\nColunas em '{csv_path.name}':")
-    for col, amp in amplitudes.items():
-        print(f"  {col}  →  amplitude {amp:.4f} W")
-
-
 def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Processa CSV GREEND selecionando a coluna de maior amplitude como mains."
+        description="Processa CSV UCI (Date;Time;Global_active_power;...) e gera JSONs diários."
     )
     parser.add_argument("csv", type=Path, help="Caminho do arquivo CSV")
     parser.add_argument("--prefix", type=str, default="", help="Prefixo para os arquivos de saída (ex: 01)")
-    parser.add_argument("--list-columns", action="store_true", help="Lista colunas e amplitudes, sem processar")
     args = parser.parse_args()
 
     csv_path = args.csv.resolve()
     if not csv_path.exists():
         print(f"Erro: arquivo não encontrado — {csv_path}")
         sys.exit(1)
-
-    if args.list_columns:
-        list_columns(csv_path)
-        sys.exit(0)
 
     output_dir = Path(__file__).parent / "output"
     output_dir.mkdir(exist_ok=True)
@@ -163,15 +130,14 @@ def main():
 
     print(f"\n📂 Arquivo: {csv_path.name}" + (f"  (prefixo: {args.prefix})" if args.prefix else ""))
 
-    print("⏳ Carregando e selecionando coluna de maior amplitude...")
-    series, mains_col = load_and_prepare(csv_path)
-    print(f"\n   Coluna selecionada: {mains_col}")
+    print("⏳ Carregando dados...")
+    series = load_and_prepare(csv_path)
     print(f"   Intervalo: {series.index[0]}  →  {series.index[-1]}")
-    print(f"   Total de minutos após resample: {len(series)}")
+    print(f"   Total de minutos: {len(series)}")
 
     first_midnight = find_first_midnight(series)
     if first_midnight is None:
-        print("❌ Nenhuma meia-noite (00:00:00) encontrada nos dados.")
+        print("❌ Nenhuma meia-noite (00:00:00 UTC) encontrada nos dados.")
         sys.exit(1)
     print(f"🕛 Primeira meia-noite: {first_midnight}")
 

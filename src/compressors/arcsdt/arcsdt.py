@@ -56,7 +56,7 @@ class ARC_SDT:
 class ARCSDTCompressor:
     def __init__(self, percentual_error: float = 10.0, target_cr: float = 80.0,
                  kp: float = 10.0, ki: float = 2, kd: float = 0.0,
-                 update_interval: int = 1, min_absolute_error: float = 1.0):
+                 update_interval: int = 1, min_absolute_error: float = 0.001):
         self.percentual_error = target_cr
         self.target_cr = target_cr
         self.kp = kp
