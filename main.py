@@ -12,7 +12,9 @@ from src.compressors.dct import DCTCompressor
 from src.compressors.rdp import RDPCompressor
 from src.compressors.arcsdt import ARCSDTCompressor
 
-pasta = "public/output"
+opcao_pasta = input("Usar pasta (1) pública ou (2) privada? [1]: ").strip()
+pasta = "private/datasets" if opcao_pasta == "2" else "public/datasets"
+
 intervalo = 60  # 1 minuto
 
 utc_minus_3 = timezone(timedelta(hours=-3))

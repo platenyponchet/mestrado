@@ -14,7 +14,9 @@ from src.compressors.arcsdt import ARCSDTCompressor
 
 import argparse
 
-pasta = "output"
+opcao_pasta = input("Usar pasta (1) pública ou (2) privada? [1]: ").strip()
+pasta = "private/datasets" if opcao_pasta == "2" else "public/datasets"
+
 intervalo = 60
 utc_minus_3 = timezone(timedelta(hours=-3))
 
