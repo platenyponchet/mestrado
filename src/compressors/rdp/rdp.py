@@ -1,3 +1,4 @@
+import sys
 from typing import List, Tuple
 from ..utils.monitor import medir_pico_memoria
 from ..utils.metrics import Metrics
@@ -49,6 +50,8 @@ class RDPCompressor:
     def compress(self, serie: List[Tuple[float, float]]):
 
         def _compress():
+            limit = max(sys.getrecursionlimit(), len(serie) * 2)
+            sys.setrecursionlimit(limit)
             return self._rdp(serie)
 
         # 🔥 apenas a compressão é monitorada

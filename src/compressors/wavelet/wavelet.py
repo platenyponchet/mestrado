@@ -44,11 +44,13 @@ class WaveletCompressor:
             custo_p_coeficiente = 8
             K = max(1, int((tamanho_alvo - overhead_fixo) / custo_p_coeficiente))
 
-            # Hard Thresholding: mantém apenas os K maiores em magnitude
+            # Hard Thresholding: mantém exatamente os K maiores em magnitude
             abs_coeffs = np.abs(coeff_arr)
-            # Ordena decrescente e pega o valor na posição K-1 como limite
-            threshold = np.sort(abs_coeffs)[::-1][K - 1] if K <= len(abs_coeffs) else 0
-            compressed_arr = coeff_arr * (abs_coeffs >= threshold)
+            K = min(K, len(abs_coeffs))
+            top_k_idx = np.argpartition(abs_coeffs, -K)[-K:]
+            mask = np.zeros(len(coeff_arr), dtype=bool)
+            mask[top_k_idx] = True
+            compressed_arr = coeff_arr * mask
 
             # Cálculo final do CR real atingido
             tamanho_transmitido = (K * custo_p_coeficiente) + overhead_fixo
