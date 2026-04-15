@@ -196,7 +196,8 @@ algos_ativos = FILTER_ALGOS if FILTER_ALGOS else ALGOS
 
 # Preparar CSV
 os.makedirs("experiments", exist_ok=True)
-caminho_csv = "experiments/resultados.csv"
+sufixo = "privado" if opcao_pasta == "2" else "publico"
+caminho_csv = f"experiments/resultados_{sufixo}.csv"
 
 # LIMPA O ARQUIVO NO INÍCIO DA EXECUÇÃO
 if os.path.exists(caminho_csv):

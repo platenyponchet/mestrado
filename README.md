@@ -202,7 +202,7 @@ O monitoramento de tempo e memória (`utils/monitor.py`) usa uma thread paralela
 Cada arquivo segue o padrão de nome:
 
 ```
-[Nome]--[DataInicio]--[DataFim].json
+[Nome]--[DataInicioArquivoBase]--[DataInicioDiaRecortado].json
 ```
 
 O conteúdo é um array JSON de floats representando a potência em Watts, com uma leitura por minuto:
