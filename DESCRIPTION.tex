@@ -1,0 +1,786 @@
+\documentclass[12pt, a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage[numbers,sort&compress]{natbib}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!70!black,
+    urlcolor=blue!70!black,
+}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{gray!10},
+    frame=single,
+    breaklines=true,
+    keepspaces=true,
+    columns=flexible,
+    commentstyle=\color{gray},
+    keywordstyle=\color{blue},
+    literate=
+        {←}{$\leftarrow$}1
+        {→}{$\rightarrow$}1
+        {↑}{\uparrow}1
+        {↓}{\downarrow}1
+        {≤}{$\leq$}1
+        {≥}{$\geq$}1
+        {≠}{$\neq$}1
+}
+
+\title{\textbf{Descrição do Experimento}\\[0.5em]
+\large Benchmark Comparativo de Algoritmos de Compressão\\
+em Séries Temporais de Consumo de Energia Elétrica}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+Benchmark comparativo de cinco algoritmos de compressão \textit{lossy} aplicados a séries temporais de consumo de energia elétrica. O objetivo é avaliar o \textit{trade-off} entre taxa de compressão, qualidade de reconstrução, tempo de execução e uso de memória em diferentes condições de janelamento e alvo de compressão.
+
+% ============================================================
+\section{Fundamentação Teórica}
+% ============================================================
+
+% ------------------------------------------------------------
+\subsection{Transformada Wavelet Discreta (DWT)}
+% ------------------------------------------------------------
+
+\subsubsection{Intuição: zoom em diferentes escalas}
+
+Imagine observar uma série de consumo elétrico de um dia inteiro (1.440 pontos). Em escala grossa você enxerga a curva diária — manhã baixa, pico no almoço, queda à noite. Em escala fina você enxerga tremores de poucos minutos, ruídos, picos de ligar um eletrodoméstico. A Transformada Wavelet Discreta (DWT) faz exatamente isso: decompõe o sinal em camadas de resolução diferentes, separando o que é tendência (lenta) do que é detalhe (rápido). Com isso, coeficientes de detalhe pequenos — que correspondem a variações irrelevantes — podem ser descartados sem prejudicar muito a reconstrução.
+
+A ideia central é a \textbf{análise de multirresolução (MRA)}, introduzida por Mallat~\cite{mallat1989theory}. Uma apresentação abrangente pode ser encontrada em~\cite{mallat2008wavelet}.
+
+\subsubsection{O banco de filtros: um passo da DWT}
+
+Uma wavelet é uma pequena forma de onda localizada no tempo e com média zero. A DWT usa essa ideia para decompor o sinal medindo, em cada posição e em cada escala de resolução, o quanto o sinal oscila ali. Na prática, isso é implementado por um banco de filtros.
+
+Dado um sinal discreto $x[n]$ de comprimento $N$, um passo da DWT aplica dois filtros FIR em paralelo:
+
+\begin{align*}
+x[n] \;\longrightarrow\;
+\begin{cases}
+h[n] \;\text{(passa-baixa)} \;\longrightarrow\; {\downarrow}2 \;\longrightarrow\; cA \quad \text{(aproximação: tendências lentas)}\\
+g[n] \;\text{(passa-alta)}\;\; \;\longrightarrow\; {\downarrow}2 \;\longrightarrow\; cD \quad \text{(detalhe: variações rápidas)}
+\end{cases}
+\end{align*}
+
+\textbf{O que cada filtro faz:}
+\begin{itemize}
+    \item $h$ (passa-baixa) calcula uma média ponderada da vizinhança — produz a versão suavizada do sinal.
+    \item $g$ (passa-alta) calcula uma diferença ponderada — capta as oscilações locais.
+\end{itemize}
+
+\textbf{Por que subamostramos por 2 (${\downarrow}2$)?} Após o filtro passa-baixa $h$, o sinal resultante varia lentamente: amostras vizinhas são parecidas entre si e carregar todas é redundante. Guardar uma de cada duas é suficiente para representar fielmente esse sinal suavizado. O mesmo raciocínio vale para o passa-alta $g$: após capturar as oscilações rápidas, a informação de detalhe também pode ser representada com metade das amostras. Há ainda um benefício de contagem: sem subamostragem, cada nível dobraria o número de coeficientes; com ela, $N/2 + N/2 = N$ — a DWT é uma mudança de representação, não uma expansão de dados.
+
+Os dois filtros não são independentes: $g$ é derivado de $h$ pela relação de \textbf{conjugado em quadratura}:
+\begin{equation}
+    g[n] = (-1)^n \cdot h[L - 1 - n]
+\end{equation}
+onde $L$ é o comprimento do filtro. Isso garante que $h$ e $g$ cobrem juntos todo o espectro de frequências — sem lacunas nem sobreposições — e que a reconstrução perfeita é possível.
+
+\subsubsection{Decomposição em $L$ Níveis}
+
+A estratégia é: pegar o subband de \emph{aproximação} (que ainda contém informação relevante em escala mais grossa) e passar pelo banco de filtros novamente. Repete-se por $L$ níveis:
+
+\begin{align*}
+\text{Nível } 1: &\quad x       \;\to\; cA_1,\; cD_1 \\
+\text{Nível } 2: &\quad cA_1    \;\to\; cA_2,\; cD_2 \\
+\text{Nível } 3: &\quad cA_2    \;\to\; cA_3,\; cD_3 \\
+                 &\quad \vdots \\
+\text{Nível } L: &\quad cA_{L-1} \;\to\; cA_L,\; cD_L
+\end{align*}
+
+O resultado final é o conjunto $\{cA_L,\, cD_L,\, cD_{L-1},\, \ldots,\, cD_1\}$, com comprimentos $\{N/2^L,\, N/2^L,\, N/2^{L-1},\, \ldots,\, N/2\}$. Os coeficientes $cD_j$ de nível alto ($j$ próximo de $L$) capturam variações de baixa frequência (muitos minutos); os de nível baixo ($j = 1$) capturam variações de alta frequência (minuto a minuto). Para séries de consumo elétrico, os coeficientes de detalhe de níveis baixos tendem a ser pequenos — são eles que serão descartados na compressão.
+
+Em forma matricial, a DWT ortogonal é escrita como:
+\begin{equation}
+    \mathbf{c} = \mathbf{W} \cdot \mathbf{x}
+\end{equation}
+
+onde $\mathbf{W}$ é uma matriz ortogonal ($\mathbf{W}^T \mathbf{W} = \mathbf{I}$). A ortogonalidade garante a preservação de energia (Parseval):
+\begin{equation}
+    \|\mathbf{x}\|^2 = \|\mathbf{c}\|^2
+    \qquad\Longrightarrow\qquad
+    \sum_n x[n]^2 = \sum_i c_i^2
+\end{equation}
+
+Isso significa que a energia total do sinal é a mesma no domínio wavelet — apenas redistribuída. Coeficientes grandes concentram quase toda a energia; os pequenos contribuem pouco.
+
+\subsubsection{Famílias de Wavelets}
+
+A escolha da família de wavelet define o formato dos filtros $h$ e $g$. O critério prático é: \emph{quanto mais suave e longa a wavelet, melhor ela representa sinais suaves; wavelets assimétricas podem introduzir desvio de fase}. As famílias \texttt{db4} e \texttt{sym4} foram construídas por Daubechies~\cite{daubechies1992ten}; a família biortogonal \texttt{bior4.4} foi introduzida por Cohen, Daubechies e Feauveau~\cite{cohen1992biorthogonal}:
+
+\begin{table}[H]
+\centering
+\caption{Famílias de wavelets utilizadas no experimento}
+\begin{tabular}{lcccp{5cm}}
+\toprule
+\textbf{Família} & \textbf{Suporte} & \textbf{Simetria} & \textbf{Mom.\ nulos} & \textbf{Característica} \\
+\midrule
+\texttt{db4}     & 7 ($L=8$) & Assimétrica     & 4   & Família: \texttt{db4} (suave, boa para tendências) \\
+\texttt{sym4}    & 7 ($L=8$) & Quase simétrica & 4   & Similar à db4, menos distorção de fase \\
+\texttt{bior4.4} & 9/7       & Simétrica       & 4/4 & Biortogonal; filtros de análise $\neq$ síntese \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Momentos nulos} de ordem $K$ significam que a wavelet é ortogonal a polinômios de grau até $K-1$. Na prática: regiões do sinal que variam de forma polinomial (ex: uma rampa, uma parábola) produzem coeficientes de detalhe próximos de zero nessas regiões — o que maximiza a quantidade de coeficientes que podem ser zerados sem perda perceptível.
+
+\subsubsection{Compressão por Hard Thresholding}
+
+A propriedade de compactação de energia da DWT faz com que poucos coeficientes de grande magnitude carreguem quase toda a informação do sinal. A compressão consiste em \textbf{zerar os coeficientes de menor magnitude} e transmitir/armazenar apenas os $K$ maiores.
+
+Dado o vetor de coeficientes $\mathbf{c}$, o \textit{hard thresholding} define:
+
+\begin{equation}
+    \hat{c}[i] =
+    \begin{cases}
+        c[i], & \text{se } |c[i]| \text{ está entre os } K \text{ maiores} \\
+        0,    & \text{caso contrário}
+    \end{cases}
+\end{equation}
+
+O limiar $\lambda$ que separa os $K$ maiores é a $K$-ésima estatística de ordem decrescente:
+\begin{equation}
+    \lambda = |c|_{(K)}
+\end{equation}
+
+Pelo teorema de Parseval, o erro de reconstrução é exatamente a energia dos coeficientes descartados:
+\begin{equation}
+    \|\mathbf{x} - \hat{\mathbf{x}}\|^2
+    = \sum_{i \,\notin\, \text{top-}K} c[i]^2
+\end{equation}
+
+\textbf{Analogia}: é como comprimir um arquivo de áudio descartando sons de alta frequência que o ouvido não percebe. A DWT faz o equivalente para séries temporais, separando o que é ``estrutura importante'' do que é ``variação de fundo''.
+
+\subsubsection{Reconstrução (IDWT)}
+
+A reconstrução percorre o caminho inverso: interpola (${\uparrow}2$ — insere zeros entre amostras) e filtra com os filtros duais $\tilde{h}$ e $\tilde{g}$, somando os dois subbands:
+
+\begin{equation}
+    cA_k,\, cD_k \;\xrightarrow{\uparrow 2 + \tilde{h},\;\uparrow 2 + \tilde{g}}\; \text{soma} \;\longrightarrow\; cA_{k-1}
+\end{equation}
+
+Para wavelets ortogonais: $\tilde{h} = h$, $\tilde{g} = g$. Para biortogonais (\texttt{bior4.4}): os filtros de síntese diferem dos de análise, mas a reconstrução perfeita ainda é garantida (sem coeficientes zerados). Com coeficientes zerados, a reconstrução é aproximada — e o erro é controlado pela energia descartada.
+
+% ------------------------------------------------------------
+\subsection{Transformada Discreta do Cosseno (DCT)}
+% ------------------------------------------------------------
+
+\subsubsection{Intuição: decompor o sinal em ondas de cosseno}
+
+A ideia da DCT é expressar qualquer sinal como a \textbf{soma ponderada de ondas cosseno de diferentes frequências}. Cada onda cosseno é uma ``componente'': a de frequência zero é simplesmente o valor médio (componente DC); as de frequências maiores descrevem oscilações cada vez mais rápidas. Ao somar as componentes certas com os pesos certos, reconstruímos o sinal original.
+
+Para \emph{comprimir}, basta perceber que sinais suaves (como a curva de consumo ao longo de um dia) têm quase toda a sua energia concentrada nas primeiras componentes — as de variação lenta. As componentes de alta frequência, que descrevem microoscilaçoes rápidas, têm pesos muito pequenos e podem ser descartadas sem grande perda.
+
+Esse é o mesmo princípio usado no JPEG para imagens e no MP3 para áudio.
+
+\subsubsection{Definição Formal}
+
+A DCT-II foi proposta por Ahmed, Natarajan e Rao~\cite{ahmed1974dct}. Para um sinal $x[n]$, $n = 0, \ldots, N-1$, cada coeficiente $X[k]$ é calculado como:
+
+\begin{equation}
+    X[k] = \alpha[k] \sum_{n=0}^{N-1} x[n]\,\cos\!\left(\frac{\pi k (2n+1)}{2N}\right)
+\end{equation}
+
+\textbf{Como ler esta fórmula:} a somatória calcula o produto interno entre o sinal $x$ e a $k$-ésima onda cosseno. Quanto maior $|X[k]|$, mais o sinal ``se parece'' com essa onda de frequência $k$. O fator $\alpha[k]$ é apenas uma normalização para que a transformação seja ortogonal (\texttt{norm='ortho'} no SciPy):
+
+\begin{equation}
+    \alpha[k] =
+    \begin{cases}
+        \sqrt{1/N}, & k = 0 \quad \text{(componente DC)}\\[4pt]
+        \sqrt{2/N}, & k = 1, \ldots, N-1
+    \end{cases}
+\end{equation}
+
+Com essa normalização, a matriz da DCT é ortogonal: $\mathbf{C}^T \mathbf{C} = \mathbf{I}$, e a DCT inversa tem exatamente a mesma forma:
+
+\begin{equation}
+    x[n] = \sum_{k=0}^{N-1} \alpha[k]\, X[k]\,\cos\!\left(\frac{\pi k (2n+1)}{2N}\right)
+\end{equation}
+
+Ou seja, reconstruir o sinal é simplesmente \emph{somar as ondas cosseno ponderadas pelos coeficientes $X[k]$}.
+
+\subsubsection{A base de cossenos}
+
+Geometricamente, cada onda cosseno é um vetor em $\mathbb{R}^N$:
+
+\begin{equation}
+    \varphi_k[n] = \alpha[k]\,\cos\!\left(\frac{\pi k (2n+1)}{2N}\right)
+\end{equation}
+
+Os $N$ vetores $\{\varphi_0, \varphi_1, \ldots, \varphi_{N-1}\}$ formam uma \textbf{base ortonormal} de $\mathbb{R}^N$ — são $N$ direções perpendiculares entre si que juntas cobrem todo o espaço. Calcular a DCT é projetar o sinal em cada uma dessas direções; reconstruir é somar as projeções.
+
+\begin{itemize}
+    \item $k=0$: $\varphi_0$ é constante — $X[0]$ é proporcional à média do sinal.
+    \item $k=1$: $\varphi_1$ oscila meia vez no intervalo — capta a tendência global.
+    \item $k = N-1$: $\varphi_{N-1}$ oscila $N/2$ vezes — capta o ruído de alta frequência.
+\end{itemize}
+
+\subsubsection{Compactação de Energia}
+
+A DCT tem excelente \textbf{compactação de energia}: para sinais suaves, quase toda a energia fica nos primeiros coeficientes. Formalmente, a DCT é assintoticamente ótima para processos autorregressivos de primeira ordem (AR(1))~\cite{ahmed1974dct}, que modelam bem séries de consumo elétrico (onde o valor de agora é muito correlacionado com o de um minuto atrás).
+
+Pelo teorema de Parseval para a DCT ortogonal, a energia total é preservada:
+\begin{equation}
+    \|\mathbf{x}\|^2 = \|\mathbf{X}\|^2
+    \qquad\Longrightarrow\qquad
+    \sum_n x[n]^2 = \sum_k X[k]^2
+\end{equation}
+
+A energia não some — ela é apenas redistribuída entre os coeficientes. Em sinais suaves, essa redistribuição concentra a energia em poucos coeficientes de baixa frequência.
+
+\subsubsection{Compressão por Truncamento Espectral}
+
+A compressão é direta: manter apenas os $K$ primeiros coeficientes (baixas frequências) e zerar os demais:
+
+\begin{equation}
+    \hat{X}[k] =
+    \begin{cases}
+        X[k], & k = 0, 1, \ldots, K-1 \\
+        0,    & k = K, \ldots, N-1
+    \end{cases}
+\end{equation}
+
+O erro de reconstrução é exatamente a energia das componentes descartadas:
+\begin{equation}
+    \|\mathbf{x} - \hat{\mathbf{x}}\|^2 = \sum_{k=K}^{N-1} X[k]^2
+\end{equation}
+
+\textbf{Nota sobre o fenômeno de Gibbs:} se o sinal tiver uma descontinuidade abrupta (ex: a luz acende de repente e o consumo salta), as componentes de alta frequência são necessárias para representar esse salto. Descartá-las causa \textit{ringing} — oscilações artificiais em volta da descontinuidade, visíveis na reconstrução.
+
+\subsubsection{DCT vs.\ Wavelet: a diferença fundamental}
+
+\begin{itemize}
+    \item A \textbf{DCT} descarta componentes de alta frequência \emph{globais}: um único coeficiente de frequência alta descreve oscilações que acontecem ao longo de \emph{todo} o sinal.
+    \item A \textbf{Wavelet} descarta coeficientes localizados no tempo \emph{e} na frequência: um coeficiente de detalhe diz ``neste instante e nesta escala, a variação era pequena''.
+\end{itemize}
+
+Para um sinal com um pico isolado (ex: um aparelho ligando por 5 minutos), a Wavelet representa esse evento em poucos coeficientes locais. A DCT precisa de muitos coeficientes de alta frequência para reconstituí-lo — ou produz \textit{ringing} ao redor dele.
+
+\subsubsection{Por que não usar a DFT em vez da DCT?}
+
+A DFT (Transformada Discreta de Fourier) trata o sinal como \emph{periodicamente repetido}: o final do vetor se emenda com o começo. Isso cria uma descontinuidade artificial na borda, e os coeficientes de alta frequência crescem para representar esse salto — prejudicando a compactação de energia.
+
+A DCT resolve isso assumindo uma \emph{extensão par} (reflexão simétrica nas bordas), eliminando a descontinuidade artificial. Por isso a DCT compacta melhor a energia e é preferida para compressão — o mesmo motivo que a levou ao JPEG.
+
+% ------------------------------------------------------------
+\subsection{Algoritmo Ramer-Douglas-Peucker (RDP)}
+% ------------------------------------------------------------
+
+\subsubsection{Distância de Ponto à Reta}
+
+O algoritmo RDP foi proposto independentemente por Ramer~\cite{ramer1972iterative} e por Douglas e Peucker~\cite{douglas1973algorithms}.
+
+Dado um ponto $P = (x, y)$ e uma reta definida por $A = (x_1, y_1)$ e $B = (x_2, y_2)$, a \textbf{distância perpendicular} de $P$ à reta $AB$ é:
+
+\begin{equation}
+    d(P, AB) =
+    \frac{\bigl|(y_2 - y_1)\,x - (x_2 - x_1)\,y + x_2 y_1 - y_2 x_1\bigr|}
+         {\sqrt{(y_2-y_1)^2 + (x_2-x_1)^2}}
+\end{equation}
+
+Quando $A = B$ (segmento degenerado), adota-se $d = |y - y_1|$ (distância vertical).
+
+Para séries temporais, onde o eixo $x$ é o tempo uniformemente espaçado, a distância perpendicular leva em conta tanto o desvio vertical quanto a posição temporal do ponto.
+
+\subsubsection{O Algoritmo}
+
+O RDP recebe uma sequência de pontos $P = [p_0, p_1, \ldots, p_{N-1}]$ e um limiar $\varepsilon > 0$.
+
+\begin{lstlisting}[caption={Pseudocódigo do RDP}]
+função RDP(P[i..j], epsilon):
+    se j - i < 2:
+        retorna P[i..j]          // segmento trivial
+
+    d_max <- 0
+    idx   <- i
+
+    para k de i+1 até j-1:
+        d <- distância_perpendicular(P[k], P[i], P[j])
+        se d > d_max:
+            d_max <- d
+            idx   <- k
+
+    se d_max > epsilon:
+        esq <- RDP(P[i..idx], epsilon)
+        dir <- RDP(P[idx..j], epsilon)
+        retorna esq[:-1] + dir    // remove duplicata do ponto de junção
+    senão:
+        retorna [P[i], P[j]]      // descarta todos os intermediários
+
+// Chamada inicial: RDP(P[0..N-1], epsilon)
+\end{lstlisting}
+
+Os pontos inicial e final são sempre preservados.
+
+\subsubsection{Propriedades}
+
+\textbf{Garantia de erro:} para qualquer ponto $p_k$ descartado, sua distância perpendicular à reta entre os keypoints vizinhos é $\leq \varepsilon$. O erro máximo de reconstrução pontual (em distância perpendicular) é limitado por $\varepsilon$.
+
+\textbf{Nota:} a garantia é em distância perpendicular, não em distância vertical pura — diferente do SDT, que garante erro vertical $\leq \mathtt{error}$.
+
+\textbf{Complexidade:}
+\begin{itemize}
+    \item Caso médio: $\mathcal{O}(N \log N)$ — quando o ponto de maior distância divide o segmento de forma balanceada.
+    \item Pior caso: $\mathcal{O}(N^2)$ — quando o ponto escolhido está sempre próximo a uma extremidade.
+    \item Espaço (pilha de recursão): $\mathcal{O}(\log N)$ esperado, $\mathcal{O}(N)$ no pior caso.
+\end{itemize}
+
+\textbf{Offline vs.\ Online:} o RDP é \textbf{offline} — requer toda a série antes de começar. Isso o diferencia do SDT e do ARC-SDT, que são online e processam ponto a ponto.
+
+\subsubsection{Reconstrução por Interpolação Linear}
+
+Após a simplificação, os pontos descartados são reconstruídos por interpolação linear entre os keypoints adjacentes:
+
+\begin{equation}
+    \hat{x}(t) = x(t_0) + \frac{t - t_0}{t_1 - t_0} \cdot \bigl(x(t_1) - x(t_0)\bigr),
+    \qquad t \in [t_0, t_1]
+\end{equation}
+
+onde $t_0$ e $t_1$ são \textit{timestamps} de keypoints consecutivos.
+
+O erro de reconstrução vertical em um ponto descartado $p_k = (t_k, x_k)$ entre keypoints $(t_0, x_0)$ e $(t_1, x_1)$ é:
+
+\begin{equation}
+    e_k = x_k - \hat{x}(t_k) = x_k - x_0 - \frac{t_k - t_0}{t_1 - t_0}\,(x_1 - x_0)
+\end{equation}
+
+que é a diferença vertical entre o ponto real e a reta interpolada — geometricamente relacionada, mas não igual, à distância perpendicular usada no critério de simplificação.
+
+% ============================================================
+\section{Compressores}
+% ============================================================
+
+% ------------------------------------------------------------
+\subsection{Wavelet (DWT)}
+% ------------------------------------------------------------
+
+\textbf{Princípio:} representa o sinal no domínio tempo-frequência via Transformada Wavelet Discreta. Séries de energia elétrica têm estrutura multirresolução natural — variações lentas (tendência diária) e variações rápidas (picos de carga) — capturadas em diferentes escalas. A compressão descarta coeficientes de menor magnitude (baixa energia).
+
+\textbf{Pipeline:}
+\begin{enumerate}
+    \item Normaliza a série para $[0, 1]$ (\texttt{float32})
+    \item Aplica \texttt{pywt.wavedec} com família e $L$ níveis de decomposição escolhidos
+    \item Converte todos os coeficientes para um array \textit{flat} (\texttt{coeffs\_to\_array})
+    \item Calcula o orçamento $K$: quantos coeficientes cabem no tamanho-alvo (8 bytes por coeficiente: 4 para o valor + 4 para o índice original)
+    \item Mantém exatamente os $K$ maiores em magnitude via \texttt{np.argpartition} (\textit{hard thresholding})
+    \item Reconstrói com \texttt{waverec} e reverte a normalização
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\caption{Parâmetros do compressor Wavelet}
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{Parâmetro} & \textbf{Efeito} \\
+\midrule
+\texttt{wavelet} & Família: \texttt{db4} (suave, boa para tendências), \texttt{bior4.4} (biortogonal, boa simetria), \texttt{sym4} (quase simétrica) \\
+\texttt{level}   & Profundidade da decomposição. Mais níveis $\to$ maior separação de escalas \\
+\texttt{cr}      & \% de redução alvo. Controla $K$ via orçamento de bytes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Custo de transmissão:} 8 bytes por coeficiente (valor + índice), pois os coeficientes mantidos são espalhados pelo array e precisam de endereçamento explícito.
+
+% ------------------------------------------------------------
+\subsection{DCT (Transformada Discreta do Cosseno)}
+% ------------------------------------------------------------
+
+\textbf{Princípio:} representa o sinal como soma de cossenos em diferentes frequências. Séries de consumo diário têm forte componente de baixa frequência (ciclo diurno). A compressão descarta os coeficientes de alta frequência (truncamento espectral), mantendo os $K$ primeiros.
+
+\textbf{Pipeline:}
+\begin{enumerate}
+    \item Normaliza a série para $[0, 1]$ (\texttt{float32})
+    \item Aplica DCT ortogonal (\texttt{scipy.fftpack.dct}, \texttt{norm='ortho'})
+    \item Calcula $K$: coeficientes que cabem no tamanho-alvo (4 bytes por coeficiente — sem índice, pois são sequenciais)
+    \item Zera todos os coeficientes além da posição $K$
+    \item Aplica IDCT e reverte a normalização
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\caption{Parâmetros do compressor DCT}
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{Parâmetro} & \textbf{Efeito} \\
+\midrule
+\texttt{cr} & \% de redução alvo. Controla $K$ diretamente \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Diferença-chave em relação à Wavelet:} na DCT, os coeficientes mantidos são sempre os primeiros $K$ (posições sequenciais), dispensando a transmissão de índices — custo de 4 bytes por coeficiente vs.\ 8 na Wavelet. Isso torna a DCT mais eficiente em bits para o mesmo número de coeficientes, mas o truncamento espectral é menos adaptável do que o \textit{hard thresholding} por magnitude.
+
+% ------------------------------------------------------------
+\subsection{SDT (Segmented Data Transform / Método do Corredor)}
+% ------------------------------------------------------------
+
+\textbf{Princípio:} algoritmo de \textit{streaming} que processa a série ponto a ponto. Mantém um corredor angular em torno de uma linha reta partindo do último ponto salvo. Enquanto novos pontos cabem no corredor, são descartados. Quando um ponto viola o corredor, o último ponto válido é salvo e o corredor é reiniciado.
+
+\textbf{Pipeline:}
+\begin{enumerate}
+    \item Inicia com o primeiro ponto como âncora
+    \item Para cada novo ponto $p$, calcula as inclinações extremas (\textit{upper/lower slope}) a partir dos pivôs do corredor (âncora $\pm$ \texttt{error})
+    \item Atualiza \texttt{max\_upper\_slope} e \texttt{min\_lower\_slope}
+    \item Se \texttt{max\_upper\_slope} $>$ \texttt{min\_lower\_slope}: corredor violado $\to$ salva o último ponto inbound como keypoint, reinicia
+    \item Reconstrói por interpolação linear entre os keypoints
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\caption{Parâmetros do compressor SDT}
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{Parâmetro} & \textbf{Efeito} \\
+\midrule
+\texttt{error} & Desvio vertical máximo permitido. Maior \texttt{error} $\to$ corredor mais largo $\to$ menos keypoints $\to$ maior compressão \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Controle de CR no experimento:} o SDT não tem \texttt{cr} como parâmetro direto. O \texttt{experiment.py} usa \textbf{busca binária} sobre \texttt{error} para atingir o \texttt{target\_cr}, com tolerância de $\pm 2\%$ e até 30 iterações.
+
+\textbf{Característica:} algoritmo online (processa um ponto por vez, sem buffer). Muito eficiente em memória e tempo. A reconstrução linear pode introduzir artefatos em transições abruptas.
+
+% ------------------------------------------------------------
+\subsection{RDP (Ramer-Douglas-Peucker)}
+% ------------------------------------------------------------
+
+\textbf{Princípio:} algoritmo de simplificação geométrica de curvas, operando sobre a série inteira (offline). Encontra recursivamente o ponto de maior distância perpendicular à reta entre os extremos do segmento atual. Se essa distância excede $\varepsilon$, o ponto é mantido e a curva é dividida; caso contrário, todos os intermediários são descartados.
+
+\textbf{Pipeline:}
+\begin{enumerate}
+    \item Recebe o segmento $[a, b]$ (inicialmente toda a série)
+    \item Encontra o ponto $p$ com maior distância perpendicular à reta $ab$
+    \item Se $d(p) > \varepsilon$: mantém $p$, chama recursivamente \texttt{\_rdp(a..p)} e \texttt{\_rdp(p..b)}
+    \item Se $d(p) \leq \varepsilon$: descarta todos os intermediários, retorna apenas $[a, b]$
+    \item Reconstrói por interpolação linear entre os keypoints mantidos
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\caption{Parâmetros do compressor RDP}
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{Parâmetro} & \textbf{Efeito} \\
+\midrule
+\texttt{epsilon} & Distância perpendicular máxima tolerada. Menor $\varepsilon$ $\to$ mais pontos mantidos $\to$ menor compressão \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Controle de CR no experimento:} mesma estratégia do SDT — busca binária sobre \texttt{epsilon}.
+
+\textbf{Diferença em relação ao SDT:} o RDP é offline (precisa de toda a série), usa distância perpendicular (geométrica) ao invés de desvio vertical (algébrico), e tende a preservar melhor picos e vales pronunciados. Complexidade: $\mathcal{O}(N \log N)$ esperado, $\mathcal{O}(N^2)$ no pior caso.
+
+% ------------------------------------------------------------
+\subsection{ARC-SDT (Adaptive Rate Control SDT)}
+% ------------------------------------------------------------
+
+\textbf{Princípio:} extensão do SDT com malha de controle PID para ajustar dinamicamente o parâmetro \texttt{error} durante a compressão. O objetivo é convergir ao \texttt{target\_cr} sem busca binária — o ajuste acontece em tempo real, enquanto o sinal é processado.
+
+\textbf{Pipeline:}
+\begin{enumerate}
+    \item Inicializa \texttt{error} como $\dfrac{\mathtt{percentual\_error} \times \mathrm{RMS}_{\mathrm{atual}}}{100}$
+    \item Para cada novo ponto, executa o SDT normalmente
+    \item A cada \texttt{update\_interval} pontos, mede \texttt{current\_cr} e calcula o erro de controle:
+    \[
+        e(t) = \mathtt{target\_cr} - \mathtt{current\_cr}
+    \]
+    \item O controlador PID~\cite{astrom1995pid} atualiza \texttt{percentual\_error}:
+    \begin{equation}
+        \Delta = K_p \, e + K_i \int e \, dt + K_d \, \frac{de}{dt}
+    \end{equation}
+    com:
+    \begin{itemize}
+        \item \textit{Anti-windup}: reset integral na troca de sinal do erro
+        \item Filtro derivativo de primeira ordem ($\alpha = 0{,}9$)
+        \item Saturação do output em $[1,\, 10000]$
+    \end{itemize}
+    \item O novo \texttt{error} absoluto é:
+    \[
+        \mathtt{error} = \max\!\left(\frac{\mathtt{percentual\_error} \times \mathrm{RMS}}{100},\; \mathtt{min\_absolute\_error}\right)
+    \]
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\caption{Parâmetros do compressor ARC-SDT}
+\begin{tabular}{llp{7cm}}
+\toprule
+\textbf{Parâmetro} & \textbf{Padrão} & \textbf{Efeito} \\
+\midrule
+\texttt{target\_cr}           & 80\%  & Taxa de compressão alvo \\
+\texttt{kp}                   & 10{,}0 & Ganho proporcional — resposta imediata ao erro \\
+\texttt{ki}                   & 2{,}0 & Ganho integral — elimina erro estacionário \\
+\texttt{kd}                   & 0{,}0 & Ganho derivativo — amortece oscilações \\
+\texttt{update\_interval}     & 1     & A cada quantos pontos o PID atualiza \\
+\texttt{min\_absolute\_error} & 0{,}001 & Piso para o \texttt{error} absoluto (evita corredor nulo) \\
+\texttt{percentual\_error}    & (= \texttt{target\_cr}) & Erro inicial como \% do RMS \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Diferença do SDT puro:} o SDT usa busca binária \emph{antes} da compressão para encontrar o \texttt{error} ideal. O ARC-SDT encontra esse valor adaptativamente \emph{durante} a compressão — adequado para aplicações online onde o \texttt{target\_cr} deve ser atingido sem conhecimento prévio da série completa.
+
+% ============================================================
+\section{O Experimento}
+% ============================================================
+
+\subsection{Datasets}
+
+\begin{table}[H]
+\centering
+\caption{Coleções de dados utilizadas}
+\begin{tabular}{llcp{6cm}}
+\toprule
+\textbf{Coleção} & \textbf{Pasta} & \textbf{Arquivos} & \textbf{Origem} \\
+\midrule
+Pública  & \texttt{public/datasets/}  & 167 & Fontes acadêmicas (RAE, EcoData, GreenD, Indian, COMBED, Dryad, IDEAL, UKDALE, Smart*) \\
+Privada  & \texttt{private/datasets/} & 89  & Instalações brasileiras identificadas \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Cada arquivo é um JSON de 1.440 \texttt{float}s (potência em Watts, 1 leitura/minuto = 1 dia completo).
+
+\subsection{Combinações}
+
+O experimento é um produto cartesiano de:
+
+\begin{table}[H]
+\centering
+\caption{Dimensões do produto cartesiano}
+\begin{tabular}{llc}
+\toprule
+\textbf{Dimensão} & \textbf{Valores} & \textbf{Qtd.} \\
+\midrule
+Algoritmos  & wavelet-db4, wavelet-bior4.4, wavelet-sym4, DCT, ARC-SDT, SDT, RDP & 7 \\
+Target CR   & 10\%, 20\%, \ldots, 90\% & 9 \\
+Janela      & 15, 60, 360, 720, 1440 pontos & 5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Total de combinações por série:} $7 \times 9 \times 5 = \mathbf{315}$ combinações.
+
+Para os arquivos disponíveis:
+\begin{itemize}
+    \item Público: $167 \times 315 \approx 52.605$ execuções
+    \item Privado: $89 \times 315 \approx 28.035$ execuções
+\end{itemize}
+
+\subsection{Janelamento}
+
+Cada arquivo (1.440 pontos) é dividido em janelas não-sobrepostas de tamanho fixo. Janelas incompletas ao final são descartadas. As métricas reportadas são a \textbf{média das janelas} da série.
+
+\begin{table}[H]
+\centering
+\caption{Tamanhos de janela e suas interpretações}
+\begin{tabular}{ccc}
+\toprule
+\textbf{Janela (pts)} & \textbf{Janelas por série (1440 pts)} & \textbf{Interpretação} \\
+\midrule
+15   & 96 & 15 minutos \\
+60   & 24 & 1 hora \\
+360  & 4  & 6 horas \\
+720  & 2  & 12 horas \\
+1440 & 1  & 1 dia completo \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+O janelamento afeta diretamente a qualidade dos compressores baseados em transformada (Wavelet, DCT): janelas menores têm menos coeficientes disponíveis, limitando a resolução frequencial. Para compressores por corredor (SDT, RDP, ARC-SDT), janelas menores podem facilitar ou dificultar atingir o \texttt{target\_cr} dependendo da variabilidade local.
+
+\subsection{Controle de CR por Algoritmo}
+
+\begin{table}[H]
+\centering
+\caption{Mecanismos de controle de CR}
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{Algoritmo} & \textbf{Mecanismo} \\
+\midrule
+Wavelet  & Direto via orçamento de bytes $\to$ $K$ coeficientes \\
+DCT      & Direto via orçamento de bytes $\to$ $K$ coeficientes \\
+SDT      & Busca binária sobre \texttt{error} (tolerância $\pm 2\%$, até 30 iter.) \\
+RDP      & Busca binária sobre \texttt{epsilon} (tolerância $\pm 2\%$, até 30 iter.) \\
+ARC-SDT  & Controle PID adaptativo durante a compressão \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Métricas Coletadas por Execução}
+
+\textbf{Desempenho:}
+\begin{itemize}
+    \item \texttt{compression\_ratio}: CR real atingido (\%)
+    \item \texttt{execution\_time}: tempo total de todas as janelas (segundos)
+    \item \texttt{memory\_usage\_mb}: pico de RAM acima da linha de base (MB)
+\end{itemize}
+
+\textbf{Qualidade de reconstrução:}
+
+\begin{table}[H]
+\centering
+\caption{Métricas de qualidade de reconstrução}
+\begin{tabular}{llp{5.5cm}}
+\toprule
+\textbf{Métrica} & \textbf{Fórmula} & \textbf{Interpretação} \\
+\midrule
+MSE  & $\displaystyle\frac{1}{N}\sum_{n}(x[n]-\hat{x}[n])^2$ & Erro quadrático médio \\[8pt]
+RMSE & $\sqrt{\mathrm{MSE}}$ & Mesma unidade do sinal \\[4pt]
+NRMSE & $\displaystyle\frac{\mathrm{RMSE}}{\max(x)-\min(x)}$ & RMSE normalizado pelo range \\[8pt]
+MAPE & $\displaystyle\frac{100}{N}\sum_{n}\frac{|x[n]-\hat{x}[n]|}{|x[n]|}$ & Erro percentual (exclui zeros) \\[8pt]
+ISD  & $\displaystyle\sum_{n}(x[n]-\hat{x}[n])^2$ & Distância integral acumulada \\[8pt]
+PRD  & $\displaystyle100\times\frac{\|\mathbf{x}-\hat{\mathbf{x}}\|}{\|\mathbf{x}\|}$ & Distorção relativa à norma $L^2$ \\[8pt]
+SNR  & $\displaystyle10\log_{10}\!\left(\frac{\|\mathbf{x}\|^2}{\|\mathbf{x}-\hat{\mathbf{x}}\|^2}\right)$ & Relação sinal-ruído (dB) \\[8pt]
+PSNR & $\displaystyle10\log_{10}\!\left(\frac{\max(x)^2}{\mathrm{MSE}}\right)$ & SNR de pico (dB) \\[8pt]
+SSIM & — & Similaridade estrutural~\cite{wang2004ssim} \\[4pt]
+EnergyError & $\displaystyle100\times\frac{|E_1 - E_2|}{E_1}$ & Erro relativo na energia total (\%) \\[8pt]
+EnergyErrorTotal & igual com $|x|$ & Energia considerando valores absolutos \\[4pt]
+PeakRecall & $\dfrac{\text{picos preservados}}{\text{picos originais}}$ & Fração dos picos recuperados \\[8pt]
+PeakAmplitudeError & erro médio na amplitude dos picos (\%) & Fidelidade dos valores de pico \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Detalhes das métricas de pico:}
+\begin{itemize}
+    \item Picos detectados por \texttt{scipy.signal.find\_peaks} com proeminência mínima de 10\% do range
+    \item Tolerância de posição: 1\% do comprimento da janela (mínimo 1 amostra)
+    \item Um pico original é ``preservado'' se existe ao menos um pico reconstruído dentro da tolerância
+\end{itemize}
+
+\subsection{Saída}
+
+Arquivo CSV incremental em \texttt{experiments/resultados\_publico.csv} ou \texttt{experiments/resultados\_privado.csv}.
+
+\textbf{Colunas:} \texttt{arquivo}, \texttt{data}, \texttt{metodo}, \texttt{algoritmo}, \texttt{target\_cr}, \texttt{janela}, \texttt{compression\_ratio}, \texttt{execution\_time}, \texttt{memory\_usage\_mb}, \texttt{MSE}, \texttt{RMSE}, \texttt{NRMSE}, \texttt{MAPE}, \texttt{ISD}, \texttt{PRD}, \texttt{SNR}, \texttt{PSNR}, \texttt{SSIM}, \texttt{EnergyError}, \texttt{EnergyErrorTotal}, \texttt{PeakRecall}, \texttt{PeakAmplitudeError}.
+
+% ============================================================
+\section{Visualizações Sugeridas}
+% ============================================================
+
+\subsection{Trade-off CR $\times$ Qualidade}
+
+\textbf{O mais importante.} Para cada métrica de qualidade, plota a curva de degradação conforme o CR aumenta.
+
+\begin{itemize}
+    \item \textbf{Tipo:} linha, um traço por algoritmo
+    \item \textbf{Eixo X:} \texttt{target\_cr} (10\% a 90\%)
+    \item \textbf{Eixo Y:} métrica (ex.: NRMSE, SSIM, PeakRecall)
+    \item \textbf{Facets:} uma coluna por tamanho de janela
+    \item \textbf{Dado:} mediana sobre todos os arquivos do dataset
+\end{itemize}
+
+\subsection{CR Real vs.\ CR Alvo}
+
+Verifica a fidelidade de cada algoritmo ao target solicitado — importante especialmente para SDT, RDP (busca binária) e ARC-SDT (PID).
+
+\begin{itemize}
+    \item \textbf{Tipo:} linha $y = x$ (ideal) + pontos por algoritmo
+    \item \textbf{Eixo X:} \texttt{target\_cr}; \textbf{Eixo Y:} \texttt{compression\_ratio} real médio
+    \item \textbf{Interpretação:} desvio da diagonal = erro de controle sistemático
+\end{itemize}
+
+\subsection{Radar / Spider Chart por Algoritmo}
+
+Visão multidimensional fixando CR e janela.
+
+\begin{itemize}
+    \item \textbf{Eixos:} NRMSE, SSIM, PeakRecall, EnergyError, \texttt{execution\_time} normalizado, memória normalizada
+    \item Um polígono por algoritmo. Útil para resumo executivo: qual algoritmo domina em quê.
+\end{itemize}
+
+\subsection{Heatmap Algoritmo $\times$ Janela}
+
+Para um \texttt{target\_cr} fixo (ex.: 80\%), mostra como a qualidade varia com o tamanho da janela para cada algoritmo.
+
+\begin{itemize}
+    \item \textbf{Linhas:} algoritmo; \textbf{Colunas:} janela (15, 60, 360, 720, 1440)
+    \item \textbf{Célula:} mediana de NRMSE. \textbf{Colormap:} verde = melhor, vermelho = pior
+\end{itemize}
+
+\subsection{Boxplot de Distribuição de Qualidade}
+
+Mostra a dispersão da qualidade entre séries para cada algoritmo — revela algoritmos bons na média mas instáveis.
+
+\begin{itemize}
+    \item \textbf{Tipo:} boxplot ou violin plot
+    \item \textbf{Eixo X:} algoritmo; \textbf{Eixo Y:} NRMSE
+    \item \textbf{Facets:} \texttt{target\_cr} (ou filtrar por um CR específico)
+\end{itemize}
+
+\subsection{Pareto: CR $\times$ NRMSE}
+
+Plota os algoritmos no espaço CR real $\times$ NRMSE para identificar a fronteira de Pareto (máximo CR com mínimo erro).
+
+\begin{itemize}
+    \item \textbf{Tipo:} scatter, um ponto por (algoritmo, janela, \texttt{target\_cr})
+    \item \textbf{Destaque:} pontos na fronteira de Pareto
+    \item Identifica qual algoritmo é dominante para cada faixa de CR
+\end{itemize}
+
+\subsection{Tempo de Execução vs.\ CR}
+
+\begin{itemize}
+    \item \textbf{Tipo:} linha, um traço por algoritmo
+    \item \textbf{Eixo X:} \texttt{target\_cr}; \textbf{Eixo Y:} \texttt{execution\_time} (mediana, ms por janela)
+    \item \textbf{Insight esperado:} SDT e RDP crescem com CR baixo (mais iterações de busca binária); Wavelet e DCT têm tempo aproximadamente constante
+\end{itemize}
+
+\subsection{Público vs.\ Privado}
+
+Compara se os algoritmos se comportam diferentemente nos dois datasets.
+
+\begin{itemize}
+    \item \textbf{Tipo:} barras \textit{side-by-side} ou facets
+    \item \textbf{Eixo X:} algoritmo; \textbf{Eixo Y:} NRMSE mediano (fixando CR e janela)
+    \item \textbf{Hue:} público / privado
+    \item \textbf{Insight esperado:} dados privados (brasileiros) podem ter padrões distintos dos públicos
+\end{itemize}
+
+\subsection{PeakRecall vs.\ EnergyError}
+
+Dois objetivos que podem conflitar: preservar picos (importante para faturamento de demanda) e conservar energia total (importante para faturamento de consumo).
+
+\begin{itemize}
+    \item \textbf{Tipo:} scatter 2D
+    \item \textbf{Eixo X:} EnergyError (\%); \textbf{Eixo Y:} PeakRecall $\in [0, 1]$
+    \item \textbf{Hue:} algoritmo; \textbf{Facets:} \texttt{target\_cr}
+    \item Algoritmos no canto superior-esquerdo são os mais interessantes para o contexto de energia elétrica
+\end{itemize}
+
+\subsection{JointGrid Comparativo (já implementado)}
+
+O \texttt{analysis/src/joint.py} gera JointGrids comparando dois algoritmos em NRMSE vs.\ CR real. Usar para comparações diretas entre pares de algoritmos de interesse (ex.: ARC-SDT vs.\ SDT, Wavelet-db4 vs.\ DCT).
+
+% ============================================================
+\bibliographystyle{plainnat}
+\bibliography{DESCRIPTION}
+% ============================================================
+
+\end{document}

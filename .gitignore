@@ -1,3 +1,12 @@
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.pdf
+
 # ignoring python tmp files
 __pycache__/
 *.py[cod]

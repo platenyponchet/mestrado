@@ -36,6 +36,16 @@ Todos seguem a mesma interface:
 | RDP | `rdp/` | `epsilon` (dist. perpendicular máx) — busca binária em experiment.py |
 | ARC-SDT | `arcsdt/` | `target_cr`, `percentual_error`, `kp`, `ki`, `kd`, `update_interval` |
 
+## Documentação do experimento
+
+`DESCRIPTION.md` — arquivo detalhado e evolutivo com:
+- **Seção 0 (Teoria):** fundamentação matemática de Wavelet (DWT), DCT e RDP. SDT e ARC-SDT serão adicionados pelo usuário.
+- **Seção 1 (Compressores):** descrição técnica de cada compressor (pipeline, parâmetros, custo de transmissão)
+- **Seção 2 (Experimento):** datasets, combinações, janelamento, métricas
+- **Seção 3 (Visualizações):** catálogo de visualizações sugeridas
+
+Sempre consultar e atualizar esse arquivo quando houver mudanças no experimento, nos compressores ou nas métricas.
+
 ## Comandos
 
 ```bash
