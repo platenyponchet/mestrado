@@ -3,43 +3,37 @@ from src.compressors.arcsdt import ARCSDTCompressor
 from src.compressors.arcsdt.arcsdt import ARC_SDT
 
 
-# ── Testes unitários: ARC_SDT ─────────────────────────────────────────────────
+# ── Unit tests: ARC_SDT ───────────────────────────────────────────────────────
 
 class TestARCSDT:
-    def test_process_retorna_bool_e_opcional(self):
+    def test_process_returns_bool_and_optional_tuple(self):
         arcsdt = ARC_SDT(10.0, (0, 100.0))
         valid, out = arcsdt.process_new_point((1, 100.0))
         assert isinstance(valid, bool)
         assert out is None or isinstance(out, tuple)
 
-    def test_serie_constante_nunca_quebra(self):
-        # Série constante dentro do erro percentual → corredor nunca fecha
+    def test_constant_series_never_breaks_corridor(self):
+        # Constant values within the percentage error → corridor never closes
         arcsdt = ARC_SDT(10.0, (0, 100.0))
         for i in range(1, 10):
             valid, _ = arcsdt.process_new_point((i, 100.0))
             assert valid is True
 
-    def test_salto_brusco_quebra_corredor(self):
-        # Com erro percentual pequeno e salto grande, corredor deve quebrar
+    def test_sharp_reversal_breaks_corridor(self):
+        # Rising sharply then dropping back forces the slopes to cross → break
         arcsdt = ARC_SDT(0.01, (0, 100.0))
-        arcsdt.process_new_point((1, 100.0))
-        ok, out = arcsdt.process_new_point((2, 200.0))
-        # Não necessariamente quebra aqui, mas após vários saltos deve quebrar
-        results = [ok]
-        arcsdt2 = ARC_SDT(0.01, (0, 100.0))
-        for i in range(1, 20):
-            ok2, _ = arcsdt2.process_new_point((i, 100.0 + i * 50))
-            results.append(ok2)
-        assert any(not r for r in results)
+        arcsdt.process_new_point((1, 200.0))
+        ok, _ = arcsdt.process_new_point((2, 100.0))
+        assert ok is False
 
-    def test_set_error_nao_levanta_excecao(self):
+    def test_set_error_does_not_raise(self):
         arcsdt = ARC_SDT(10.0, (0, 100.0))
         arcsdt.set_error(50.0)
         valid, out = arcsdt.process_new_point((1, 100.5))
         assert isinstance(valid, bool)
 
-    def test_quebra_retorna_tupla_valida(self):
-        # Força uma quebra e verifica que o ponto retornado é (timestamp, valor)
+    def test_break_returns_valid_corridor_tuple(self):
+        # Force a break and verify the returned point is a (timestamp, value) tuple
         arcsdt = ARC_SDT(0.01, (0, 100.0))
         corridor_point = None
         for i in range(1, 30):
@@ -53,42 +47,41 @@ class TestARCSDT:
             assert isinstance(corridor_point[1], float)
 
 
-# ── Testes de integração: ARCSDTCompressor ────────────────────────────────────
+# ── Integration tests: ARCSDTCompressor ──────────────────────────────────────
 
 class TestARCSDTCompressor:
-    def test_compress_retorna_tamanho_correto(self, serie_media):
+    def test_compress_returns_correct_length(self, medium_series):
         c = ARCSDTCompressor(target_cr=80)
-        result = c.compress(serie_media)
-        assert len(result) == len(serie_media)
+        result = c.compress(medium_series)
+        assert len(result) == len(medium_series)
 
-    def test_compression_ratio_na_faixa(self, serie_media):
+    def test_compression_ratio_in_range(self, medium_series):
         c = ARCSDTCompressor(target_cr=80)
-        c.compress(serie_media)
+        c.compress(medium_series)
         assert 0 <= c.compression_ratio <= 100
 
-    def test_execution_time_nao_negativo(self, serie_media):
+    def test_execution_time_non_negative(self, medium_series):
         c = ARCSDTCompressor(target_cr=80)
-        c.compress(serie_media)
+        c.compress(medium_series)
         assert c.execution_time >= 0
 
-    def test_memory_usage_nao_negativo(self, serie_media):
+    def test_memory_usage_non_negative(self, medium_series):
         c = ARCSDTCompressor(target_cr=80)
-        c.compress(serie_media)
+        c.compress(medium_series)
         assert c.memory_usage_mb >= 0
 
-    def test_metrics_contem_todas_as_chaves(self, serie_media, metric_keys):
+    def test_metrics_contains_all_keys(self, medium_series, metric_keys):
         c = ARCSDTCompressor(target_cr=80)
-        c.compress(serie_media)
+        c.compress(medium_series)
         assert set(c.metrics.keys()) == metric_keys
 
-    def test_serie_constante_alta_compressao(self, serie_constante):
+    def test_constant_series_achieves_high_cr(self, constant_series):
         c = ARCSDTCompressor(target_cr=80)
-        c.compress(serie_constante)
+        c.compress(constant_series)
         assert c.compression_ratio > 80
 
-    def test_pid_converge_em_direcao_ao_target(self, serie_media):
-        # O PID deve empurrar o CR para perto do target;
-        # não é garantido convergir em 200 pontos, mas CR não deve ser 0
+    def test_pid_drives_cr_above_zero(self, medium_series):
+        # PID should push CR away from 0 towards the target
         c = ARCSDTCompressor(target_cr=80, kp=10.0, ki=2.0)
-        c.compress(serie_media)
+        c.compress(medium_series)
         assert c.compression_ratio > 0

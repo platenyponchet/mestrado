@@ -2,53 +2,51 @@ import pytest
 from src.compressors.dct import DCTCompressor
 
 
-# ── Testes de integração: DCTCompressor ──────────────────────────────────────
+# ── Integration tests: DCTCompressor ─────────────────────────────────────────
 
 class TestDCTCompressor:
-    def test_compress_retorna_tamanho_correto(self, serie_media):
+    def test_compress_returns_correct_length(self, medium_series):
         c = DCTCompressor(cr=80)
-        result = c.compress(serie_media)
-        assert len(result) == len(serie_media)
+        result = c.compress(medium_series)
+        assert len(result) == len(medium_series)
 
-    def test_compression_ratio_na_faixa(self, serie_media):
+    def test_compression_ratio_in_range(self, medium_series):
         c = DCTCompressor(cr=80)
-        c.compress(serie_media)
+        c.compress(medium_series)
         assert 0 <= c.compression_ratio <= 100
 
-    def test_execution_time_nao_negativo(self, serie_media):
+    def test_execution_time_non_negative(self, medium_series):
         c = DCTCompressor(cr=80)
-        c.compress(serie_media)
+        c.compress(medium_series)
         assert c.execution_time >= 0
 
-    def test_memory_usage_nao_negativo(self, serie_media):
+    def test_memory_usage_non_negative(self, medium_series):
         c = DCTCompressor(cr=80)
-        c.compress(serie_media)
+        c.compress(medium_series)
         assert c.memory_usage_mb >= 0
 
-    def test_metrics_contem_todas_as_chaves(self, serie_media, metric_keys):
+    def test_metrics_contains_all_keys(self, medium_series, metric_keys):
         c = DCTCompressor(cr=80)
-        c.compress(serie_media)
+        c.compress(medium_series)
         assert set(c.metrics.keys()) == metric_keys
 
-    def test_cr_maior_comprime_mais(self, serie_media):
-        c_baixo = DCTCompressor(cr=20)
-        c_alto = DCTCompressor(cr=90)
-        c_baixo.compress(serie_media)
-        c_alto.compress(serie_media)
-        assert c_alto.compression_ratio >= c_baixo.compression_ratio
+    def test_higher_cr_compresses_more(self, medium_series):
+        c_low = DCTCompressor(cr=20)
+        c_high = DCTCompressor(cr=90)
+        c_low.compress(medium_series)
+        c_high.compress(medium_series)
+        assert c_high.compression_ratio >= c_low.compression_ratio
 
-    def test_cr_zero_reconstroi_bem(self, serie_media):
-        # CR=0 mantém todos os coeficientes → reconstrução muito próxima do original
+    def test_cr_zero_reconstructs_accurately(self, medium_series):
+        # CR=0 keeps all coefficients → reconstruction very close to original
         c = DCTCompressor(cr=0)
-        result = c.compress(serie_media)
-        original_vals = [v for _, v in serie_media]
+        result = c.compress(medium_series)
+        original_vals = [v for _, v in medium_series]
         reconstructed_vals = [v for _, v in result]
         mse = sum((a - b) ** 2 for a, b in zip(original_vals, reconstructed_vals)) / len(original_vals)
         assert mse < 1.0
 
-    def test_timestamps_preservados(self, serie_media):
+    def test_timestamps_preserved(self, medium_series):
         c = DCTCompressor(cr=80)
-        result = c.compress(serie_media)
-        original_ts = [t for t, _ in serie_media]
-        result_ts = [t for t, _ in result]
-        assert original_ts == result_ts
+        result = c.compress(medium_series)
+        assert [t for t, _ in result] == [t for t, _ in medium_series]

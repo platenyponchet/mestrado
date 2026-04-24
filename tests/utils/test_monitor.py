@@ -21,26 +21,26 @@ def test_memory_mb_non_negative():
 
 
 def test_passes_positional_args():
-    def soma(a, b):
+    def add(a, b):
         return a + b
 
-    result, _, _ = medir_pico_memoria(soma, 3, 7)
+    result, _, _ = medir_pico_memoria(add, 3, 7)
     assert result == 10
 
 
 def test_passes_keyword_args():
-    def concat(a, sep=""):
-        return sep.join(a)
+    def join(parts, sep=""):
+        return sep.join(parts)
 
-    result, _, _ = medir_pico_memoria(concat, ["x", "y"], sep="-")
+    result, _, _ = medir_pico_memoria(join, ["x", "y"], sep="-")
     assert result == "x-y"
 
 
 def test_measures_elapsed_time():
-    def espera():
+    def slow():
         time.sleep(0.05)
         return True
 
-    result, t, _ = medir_pico_memoria(espera)
+    result, t, _ = medir_pico_memoria(slow)
     assert result is True
     assert t >= 0.04

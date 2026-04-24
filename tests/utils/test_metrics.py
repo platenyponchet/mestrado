@@ -15,7 +15,7 @@ def test_mse_known_value():
 
 # ── RMSE ─────────────────────────────────────────────────────────────────────
 
-def test_rmse_equals_sqrt_mse():
+def test_rmse_equals_sqrt_of_mse():
     m = Metrics([0.0, 0.0], [3.0, 4.0])
     assert m.rmse() == pytest.approx(m.mse() ** 0.5)
 
@@ -23,7 +23,7 @@ def test_rmse_equals_sqrt_mse():
 # ── NRMSE ────────────────────────────────────────────────────────────────────
 
 def test_nrmse_zero_range_returns_zero():
-    # Série original constante: range=0 → nrmse=0 independente da reconstruída
+    # Constant original: range=0 → nrmse=0 regardless of reconstruction
     assert Metrics([5.0, 5.0, 5.0], [5.0, 5.0, 5.0]).nrmse() == pytest.approx(0.0)
 
 
@@ -39,7 +39,7 @@ def test_ssim_identical_series():
     assert Metrics(s, s).ssim() == pytest.approx(1.0)
 
 
-def test_ssim_constant_series_equal():
+def test_ssim_constant_equal_series():
     assert Metrics([5.0] * 10, [5.0] * 10).ssim() == pytest.approx(1.0)
 
 
@@ -51,7 +51,7 @@ def test_mape_known_value():
 
 
 def test_mape_skips_zero_original_values():
-    # Apenas o segundo par conta: |10-20|/10 * 100 = 100%
+    # Only second pair counts: |10-20|/10 * 100 = 100%
     assert Metrics([0.0, 10.0], [99.0, 20.0]).mape() == pytest.approx(100.0)
 
 
@@ -65,14 +65,14 @@ def test_isd_known_value():
 # ── PRD ──────────────────────────────────────────────────────────────────────
 
 def test_prd_known_value():
-    # numerador=sqrt(2), denominador=sqrt(2), prd=100%
+    # numerator=sqrt(2), denominator=sqrt(2), prd=100%
     assert Metrics([1.0, 1.0], [0.0, 0.0]).prd() == pytest.approx(100.0)
 
 
 # ── SNR ──────────────────────────────────────────────────────────────────────
 
 def test_snr_zero_noise_returns_none():
-    # Séries idênticas: noise_power=0 → None
+    # Identical series: noise_power=0 → None
     assert Metrics([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]).snr() is None
 
 
@@ -93,35 +93,33 @@ def test_psnr_zero_mse_returns_none():
 
 
 def test_psnr_zero_max_returns_none():
-    # max_i = max([0,0]) = 0 → None
+    # max_i = max([0, 0]) = 0 → None
     assert Metrics([0.0, 0.0], [1.0, 0.0]).psnr() is None
 
 
 # ── PEAK RECALL ──────────────────────────────────────────────────────────────
 
-def test_peak_recall_no_peaks_returns_none():
-    # Série plana não tem picos
+def test_peak_recall_flat_series_returns_none():
+    # Flat series has no peaks
     assert Metrics([5.0] * 30, [5.0] * 30).peak_recall() is None
 
 
-def test_peak_recall_perfect_preservation():
-    # Original == reconstruída → todos os picos preservados
+def test_peak_recall_perfect_when_series_identical():
     s = [0.0, 1.0, 10.0, 1.0, 0.0, 1.0, 10.0, 1.0, 0.0] * 5
-    m = Metrics(s, s)
-    result = m.peak_recall()
+    result = Metrics(s, s).peak_recall()
     assert result is None or result == pytest.approx(1.0)
 
 
 # ── PEAK AMPLITUDE ERROR ─────────────────────────────────────────────────────
 
-def test_peak_amplitude_error_no_peaks_returns_none():
+def test_peak_amplitude_error_flat_series_returns_none():
     assert Metrics([5.0] * 30, [5.0] * 30).peak_amplitude_error() is None
 
 
 # ── ENERGY ERROR ─────────────────────────────────────────────────────────────
 
 def test_energy_error_zero_energy_returns_none():
-    # sum=0 → energia=0 → None
+    # sum=0 → energy=0 → None
     assert Metrics([0.0, 0.0], [1.0, 1.0]).energy_error() is None
 
 
@@ -136,7 +134,7 @@ def test_energy_error_total_identical_series():
 # ── COMPUTE_METRICS ───────────────────────────────────────────────────────────
 
 def test_compute_metrics_returns_all_keys(metric_keys):
-    # SSIM exige no mínimo 7 amostras
+    # SSIM requires at least 7 samples
     s1 = [float(i) for i in range(1, 11)]
     s2 = [float(i) + 0.1 for i in range(1, 11)]
     result = Metrics(s1, s2).compute_metrics()
