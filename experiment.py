@@ -194,16 +194,52 @@ ALGOS = [
 
 algos_ativos = FILTER_ALGOS if FILTER_ALGOS else ALGOS
 
+# Menu de modo de execução
+modo_atualizacao = False
+algo_selecionado = None
+
+if not args.volpi and not args.test:
+    print("\n--- Modo de execução ---")
+    print("  1 -> Executar todos os algoritmos (substitui CSV existente)")
+    print("  2 -> Atualizar resultados de um algoritmo específico")
+    modo_input = input("Escolha [1]: ").strip()
+    modo = int(modo_input) if modo_input else 1
+
+    if modo == 2:
+        print("\n--- Selecione o algoritmo a atualizar ---")
+        for i, (_, label) in enumerate(ALGOS):
+            print(f"  {i} -> {label}")
+        idx_algo = int(input("Escolha: ").strip())
+        algo_selecionado, _ = ALGOS[idx_algo]
+        algos_ativos = [ALGOS[idx_algo]]
+        modo_atualizacao = True
+
 # Preparar CSV
 os.makedirs("experiments", exist_ok=True)
 sufixo = "privado" if opcao_pasta == "2" else "publico"
 caminho_csv = f"experiments/resultados_{sufixo}.csv"
 
-# LIMPA O ARQUIVO NO INÍCIO DA EXECUÇÃO
-if os.path.exists(caminho_csv):
-    os.remove(caminho_csv)
-
 csv_header_escrito = False
+
+if modo_atualizacao and os.path.exists(caminho_csv):
+    # Preservar linhas dos outros algoritmos e remover apenas as do selecionado
+    rows_preservadas = []
+    fieldnames_existentes = None
+    with open(caminho_csv, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fieldnames_existentes = reader.fieldnames
+        for row in reader:
+            if row.get("algoritmo") != algo_selecionado:
+                rows_preservadas.append(row)
+    with open(caminho_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames_existentes)
+        writer.writeheader()
+        writer.writerows(rows_preservadas)
+    csv_header_escrito = True
+    print(f"  {len(rows_preservadas)} linhas preservadas. Recalculando '{algo_selecionado}'...\n")
+else:
+    if os.path.exists(caminho_csv):
+        os.remove(caminho_csv)
 
 total_series = sum(
     1 for nome in series
