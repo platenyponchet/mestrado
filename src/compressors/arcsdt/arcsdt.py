@@ -6,7 +6,7 @@ from typing import Tuple, Optional
 
 
 class ARC_SDT:
-    def __init__(self, percentual_error: float, first_point: Tuple[int, float], min_absolute_error: float = 1):
+    def __init__(self, percentual_error: float, first_point: Tuple[int, float], min_absolute_error: float = 0.001):
         self.__percentual_error = percentual_error
         self.__corridor_point = first_point
         self.__last_inbound_point = first_point
@@ -55,7 +55,7 @@ class ARC_SDT:
 
 class ARCSDTCompressor:
     def __init__(self, percentual_error: float = 10.0, target_cr: float = 80.0,
-                 kp: float = 100.0, ki: float = 20.0, kd: float = 0.0,
+                 kp: float = 32.0, ki: float = 1.0, kd: float = 0.0,
                  update_interval: int = 1, min_absolute_error: float = 0.001):
         self.percentual_error = target_cr
         self.target_cr = target_cr
@@ -84,6 +84,12 @@ class ARCSDTCompressor:
 
                 error = self.target_cr - measured
 
+                # Overshoot (CR > target) significa tol_rel elevado demais: o corredor fica
+                # largo e o SDT descarta pontos que poderiam ser relevantes — picos de demanda,
+                # transientes ou variações rápidas são absorvidos pelo corredor e perdidos.
+                # Undershoot (CR < target) é o modo de falha menos grave: comprime menos do
+                # que o alvo, gerando um payload ligeiramente maior, mas preserva mais do sinal.
+                # Por isso o ajuste dos ganhos prioriza evitar overshoot expressivo.
                 if prev_error is not None and (error * prev_error) < 0:
                     integral = 0.0
 

@@ -168,11 +168,11 @@ elif op == 5:
     cr_input = input("Taxa de compressão alvo (%) [80.0]: ")
     target_cr = float(cr_input) if cr_input.strip() != "" else 80.0
 
-    kp_input = input("Kp do PID [100.0]: ")
-    kp = float(kp_input) if kp_input.strip() != "" else 100.0
+    kp_input = input("Kp do PID [32.0]: ")
+    kp = float(kp_input) if kp_input.strip() != "" else 32.0
 
-    ki_input = input("Ki do PID [20.0]: ")
-    ki = float(ki_input) if ki_input.strip() != "" else 20.0
+    ki_input = input("Ki do PID [1.0]: ")
+    ki = float(ki_input) if ki_input.strip() != "" else 1.0
 
     kd_input = input("Kd do PID [0.0]: ")
     kd = float(kd_input) if kd_input.strip() != "" else 0.0
