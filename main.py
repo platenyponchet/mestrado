@@ -114,18 +114,17 @@ if op == 1:
     print("\n--- Configuração Wavelet ---")
 
     print("Wavelets disponíveis:")
-    print("  1 -> db4")
-    print("  2 -> bior4.4")
-    print("  3 -> sym4")
-    print("  4 -> haar")
-    print("  5 -> outro (digitar manualmente)")
+    print("  1 -> haar")
+    print("  2 -> sym2")
+    print("  3 -> bior5.5")
+    print("  4 -> outro (digitar manualmente)")
 
     op_wavelet = int(input("Escolha: "))
-    wavelet_map = {1: "db4", 2: "bior4.4", 3: "sym4", 4: "haar"}
+    wavelet_map = {1: "haar", 2: "sym2", 3: "bior5.5"}
     wavelet = wavelet_map.get(op_wavelet) or input("Digite o nome da wavelet: ")
 
-    level_input = input("Nível de decomposição [4]: ")
-    level = int(level_input) if level_input.strip() != "" else 4
+    level_input = input("Nível de decomposição [3]: ")
+    level = int(level_input) if level_input.strip() != "" else 3
 
     cr = float(input("Redução desejada (%) (ex: 90 = remove 90%): "))
 
