@@ -28,17 +28,23 @@ class WaveletCompressor:
             
             N = len(x)
             byte_sz = 4 # float32 e int32 ocupam 4 bytes
-            
+
+            # Dado bruto sem compressão: valor (4 bytes) + timestamp da leitura (4 bytes) por ponto
+            byte_sz_ponto_original = 8
+
             # --- CÁLCULO DO ORÇAMENTO BASEADO EM % ---
-            tamanho_original = N * byte_sz
+            tamanho_original = N * byte_sz_ponto_original
             
             # Se CR=80, queremos que o tamanho_alvo seja 20% do original (1 - 80/100)
             percentual_manter = round((1 - self.cr / 100),10)
             tamanho_alvo = tamanho_original * percentual_manter
 
-            # Metadados: xmin(4), xmax(4), N(4) + estrutura de cada nível (2 valores por slice)
-            # O "+2" no level é uma margem para a estrutura interna do objeto slices
-            overhead_fixo = (3 + 2 * (self.level + 2)) * byte_sz
+            # Metadados: xmin(4), xmax(4), timestamp inicial da janela(4).
+            # N, nível e família da wavelet são parâmetros fixados a priori entre
+            # emissor e receptor (não variam por mensagem), e a estrutura de slices
+            # é totalmente derivável de (wavelet, level, N), portanto nenhum dos
+            # três precisa ser transmitido.
+            overhead_fixo = 3 * byte_sz
 
             # Cada coeficiente 'K' enviado custa 8 bytes: 4 (valor) + 4 (índice original)
             custo_p_coeficiente = 8

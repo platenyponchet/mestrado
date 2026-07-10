@@ -27,27 +27,38 @@ class DCTCompressor:
             
             N = len(x)
             byte_sz = 4
-            
+
+            # Dado bruto sem compressão: valor (4 bytes) + timestamp da leitura (4 bytes) por ponto
+            byte_sz_ponto_original = 8
+
             # --- CÁLCULO DO ORÇAMENTO BASEADO EM % ---
-            tamanho_original = N * byte_sz
+            tamanho_original = N * byte_sz_ponto_original
             
             # Se CR=80, queremos que o tamanho_alvo seja 20% do original
             percentual_manter = round((1 - self.cr / 100),10)
             tamanho_alvo = tamanho_original * percentual_manter
 
-            # OVERHEAD: Apenas xmin, xmax e N (3 metadados fixos)
+            # OVERHEAD: xmin, xmax e timestamp inicial da janela (3 metadados fixos).
+            # N é parâmetro fixado a priori entre emissor e receptor (não varia por
+            # mensagem), portanto não precisa ser transmitido.
             overhead_fixo = 3 * byte_sz
 
-            # CÁLCULO DE K: 
-            # Na DCT, geralmente enviamos os K primeiros coeficientes em ordem.
-            # Como eles estão em sequência, NÃO precisamos enviar o índice de cada um.
-            # Portanto, cada coeficiente custa apenas 4 bytes (o valor float32).
-            custo_p_coeficiente = 4 
+            # CÁLCULO DE K:
+            # Mantêm-se os K coeficientes de maior magnitude (não necessariamente os
+            # primeiros), pois nada garante que a energia se concentre nas frequências
+            # mais baixas em sinais com transientes ou picos abruptos. Como as posições
+            # mantidas ficam espalhadas pelo vetor, é necessário transmitir o índice de
+            # cada uma junto com o valor: 4 (valor) + 4 (índice original) = 8 bytes.
+            custo_p_coeficiente = 8
             K = max(1, int((tamanho_alvo - overhead_fixo) / custo_p_coeficiente))
 
-            # Mantém apenas os K primeiros (Truncamento de baixa frequência)
-            compressed_coeffs = np.zeros(N, dtype=np.float32)
-            compressed_coeffs[:K] = coeffs[:K]
+            # Hard Thresholding: mantém exatamente os K maiores em magnitude
+            abs_coeffs = np.abs(coeffs)
+            K = min(K, len(abs_coeffs))
+            top_k_idx = np.argpartition(abs_coeffs, -K)[-K:]
+            mask = np.zeros(len(coeffs), dtype=bool)
+            mask[top_k_idx] = True
+            compressed_coeffs = (coeffs * mask).astype(np.float32)
 
             # Cálculo final do CR real atingido
             tamanho_transmitido = (K * custo_p_coeficiente) + overhead_fixo
