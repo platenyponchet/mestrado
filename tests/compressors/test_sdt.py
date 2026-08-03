@@ -70,7 +70,8 @@ class TestSDTCompressor:
         c_loose = SDTCompressor(error=50.0)
         c_strict.compress(medium_series)
         c_loose.compress(medium_series)
-        assert c_loose.compression_ratio >= c_strict.compression_ratio
+        # Strict: ">=" would also pass for a compressor that ignored `error`.
+        assert c_loose.compression_ratio > c_strict.compression_ratio
 
     def test_constant_series_achieves_high_cr(self, constant_series):
         # Constant series: SDT keeps only first and last point → high CR

@@ -89,7 +89,8 @@ class TestRDPCompressor:
         c_loose = RDPCompressor(epsilon=100.0)
         c_strict.compress(medium_series)
         c_loose.compress(medium_series)
-        assert c_loose.compression_ratio >= c_strict.compression_ratio
+        # Strict: ">=" would also pass for a compressor that ignored `epsilon`.
+        assert c_loose.compression_ratio > c_strict.compression_ratio
 
     def test_constant_series_achieves_high_cr(self, constant_series):
         # Constant series: all points collinear → only endpoints kept
