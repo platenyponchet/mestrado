@@ -31,10 +31,14 @@ class Metrics:
         s_pred = self.__serie2.to_numpy()
         
         range_true = s_true.max() - s_true.min()
-        if range_true == 0:
+        if range_true == 0 or len(s_true) < 3:
             return 1.0 if np.array_equal(s_true, s_pred) else 0.0
 
-        return float(ssim(s_true, s_pred, data_range=range_true))
+        win_size = min(7, len(s_true))
+        if win_size % 2 == 0:
+            win_size -= 1
+
+        return float(ssim(s_true, s_pred, data_range=range_true, win_size=win_size))
 
     def mape(self):
         mask = self.__serie1 != 0
@@ -47,6 +51,10 @@ class Metrics:
     def prd(self):
         numerador = ((self.__serie1 - self.__serie2) ** 2).sum() ** 0.5
         denominador = (self.__serie1 ** 2).sum() ** 0.5
+
+        if denominador == 0:
+            return 0.0 if numerador == 0 else None
+
         return 100 * float(numerador / denominador)
 
     def snr(self):

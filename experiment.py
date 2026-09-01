@@ -25,8 +25,14 @@ ALGOS = [
     ("dct",             "dct"),
     ("arcsdt",          "arcsdt"),
     ("sdt",             "sdt"),
+    ("sdt_10",          "sdt_10"),
+    ("sdt_25",          "sdt_25"),
+    ("sdt_50",          "sdt_50"),
+    ("sdt_75",          "sdt_75"),
     ("rdp",             "rdp"),
 ]
+
+SDT_PARTIAL_FRACS = {"sdt_10": 0.10, "sdt_25": 0.25, "sdt_50": 0.50, "sdt_75": 0.75}
 
 # =========================
 # Deletar resultados de uma família específica
@@ -157,6 +163,31 @@ def fit_sdt(serie, target_cr, tolerancia=2.0, max_iter=30):
             hi = mid
     return best
 
+def fit_sdt_partial(serie, target_cr, frac, tolerancia=2.0, max_iter=30):
+    """Calibra a tolerância do SDT por busca binária vendo só os primeiros
+    `frac` da janela, depois aplica essa tolerância fixa à janela inteira.
+    Simula uma calibração online que não tem acesso ao restante da série."""
+    n_calib = max(2, min(len(serie), int(len(serie) * frac)))
+    calib_serie = serie[:n_calib]
+
+    lo, hi = 0.1, 1e7
+    best_error = None
+    for _ in range(max_iter):
+        mid = (lo + hi) / 2
+        c = SDTCompressor(error=mid)
+        c.compress(calib_serie)
+        best_error = mid
+        if abs(c.compression_ratio - target_cr) <= tolerancia:
+            break
+        if c.compression_ratio < target_cr:
+            lo = mid
+        else:
+            hi = mid
+
+    c_full = SDTCompressor(error=best_error)
+    c_full.compress(serie)
+    return c_full
+
 def fit_rdp(serie, target_cr, tolerancia=2.0, max_iter=30):
     lo, hi = 0.1, 1e7
     best = None
@@ -186,6 +217,8 @@ def rodar_compressor(algo, serie, target_cr):
         c.compress(serie)
     elif algo == "sdt":
         c = fit_sdt(serie, target_cr)
+    elif algo in SDT_PARTIAL_FRACS:
+        c = fit_sdt_partial(serie, target_cr, SDT_PARTIAL_FRACS[algo])
     elif algo == "rdp":
         c = fit_rdp(serie, target_cr)
     return c
@@ -370,6 +403,9 @@ def main():
 
     total = len(tarefas)
     executados = 0
+    # Redesenhar a tela só de tempos em tempos: a cada tarefa, o redesenho ANSI no
+    # processo principal serializa e vira gargalo, anulando o ganho dos workers em paralelo.
+    PRINT_EVERY = max(1, total // 200)
 
     print(f"  {total} tarefas na fila.\n")
 
@@ -386,9 +422,11 @@ def main():
             target_cr = resultado["target_cr"]
             janela = resultado["janela"]
 
+            deve_imprimir = not args.volpi and (executados % PRINT_EVERY == 0 or executados == total)
+
             if resultado["status"] == "erro":
                 erros_finais.append(resultado["erro"])
-                if not args.volpi:
+                if deve_imprimir:
                     print_progress(executados, total, nome, data, metodo, target_cr, janela, 0.0, "erro", log_lines, n_workers)
                 continue
 
@@ -406,7 +444,7 @@ def main():
                     csv_header_escrito = True
                 writer.writerow(row)
 
-            if not args.volpi:
+            if deve_imprimir:
                 log_lines.append(f"✓ {metodo:<45} CR: {cr_medio:.1f}%")
                 print_progress(executados, total, nome, data, metodo, target_cr, janela, cr_medio, "ok", log_lines, n_workers)
 

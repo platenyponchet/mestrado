@@ -13,6 +13,9 @@ __pycache__/
 *.pyo
 *.pyd
 
+# uv-managed virtual environment
+.venv/
+
 
 experiments/
 
